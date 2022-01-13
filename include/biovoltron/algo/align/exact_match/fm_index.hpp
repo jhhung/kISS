@@ -83,6 +83,7 @@ using namespace std::chrono;
  * }
  * ```
  */
+
 template<
   typename size_type = std::uint32_t,
   SASorter Sorter = PsaisSorter<size_type>
@@ -254,7 +255,7 @@ class FMIndex {
     std::cout << "elapsed time: " << dur.count() << " s.\n";
 #endif
 
-    constexpr auto sort_len = (SA_INTV == 1 ? 256u : istring::npos);
+    const auto sort_len = std::same_as<Sorter, PsaisSorter<size_type>> ? istring::npos : 256u;
 #ifdef DEBUG
     std::cout << "only build sa with prefix length: " << sort_len << "\n";
     const auto thread_n = std::thread::hardware_concurrency();
@@ -272,43 +273,65 @@ class FMIndex {
     std::cout << "build bwt and sample occ...\n";
     start = high_resolution_clock::now();
 #endif
-    bwt_.reserve(ori_sa.size());
     auto& [occ1, occ2] = occ_;
-    occ1.reserve(ori_sa.size() / OCC1_INTV + 1);
-    occ2.reserve(ori_sa.size() / OCC2_INTV + 1);
-    sa_.reserve(ori_sa.size() / SA_INTV + 1);
-    auto& cnt1 = cnt_;
-    auto cnt2 = std::array<std::uint8_t, 4>{};
-    occ1.push_back(cnt1);
-    occ2.push_back(cnt2);
-    for (auto i = size_type{}; i < ori_sa.size(); i++) {
-      const auto sa_v = ori_sa[i];
-      if (sa_v != 0) {
-        const auto c = ref[sa_v - 1];
-        bwt_.push_back(c);
-        cnt1[c]++;
-        cnt2[c]++;
-      } else {
-        bwt_.push_back(0);
-        pri_ = i;
-      }
-      if ((i + 1) % OCC2_INTV == 0) {
-        if ((i + 1) % OCC1_INTV == 0) {
-          occ1.push_back(cnt1);
-          cnt2 = {};
+    occ1.resize(ori_sa.size() / OCC1_INTV + 2);
+    occ2.resize(ori_sa.size() / OCC2_INTV + 1);
+
+#pragma omp parallel for
+    for (auto block_idx = size_type{}; block_idx < ori_sa.size(); block_idx += OCC1_INTV) {
+      auto cnt = std::array<size_type, 4>{};
+      for (auto offset = size_type{}; offset < OCC1_INTV; offset++) {
+        auto i = block_idx + offset;
+        if (i >= ori_sa.size())
+          break;
+
+        if (i % OCC2_INTV == 0)
+          for (int j = 0; j < 4; j++)
+            occ2[i / OCC2_INTV][j] = cnt[j];
+
+        const auto sa_v = ori_sa[i];
+        if (sa_v != 0) {
+          const auto c = ref[sa_v - 1];
+          cnt[c]++;
         }
-        occ2.push_back(cnt2);
       }
-      if constexpr (SA_INTV != 1) {
-        if (i % SA_INTV == 0)
-          sa_.push_back(sa_v);
-      }
+      occ1[block_idx / OCC1_INTV + 1] = cnt;
     }
+
+    for (auto i = size_type{}; i < occ1.size(); i++) {
+      for (int j = 0; j < 4; j++)
+        cnt_[j] += occ1[i][j];
+      occ1[i] = cnt_;
+    }
+
     auto sum = size_type{1};
-    for (auto& x : cnt1) {
+    for (auto& x : cnt_) {
       sum += x;
       x = sum - x;
     }
+
+    bwt_.resize(ori_sa.size());
+    sa_.resize(ori_sa.size() / SA_INTV + 1);
+#pragma omp parallel for
+    for (auto block_size = size_type{}; block_size < ori_sa.size(); block_size += 4) {
+      for (int offset = 0; offset < 4; offset++) {
+        auto i = block_size + offset;
+        if (i >= ori_sa.size())
+          break;
+        const auto sa_v = ori_sa[i];
+        if (sa_v != 0) {
+          bwt_[i] = ref[sa_v - 1];
+        } else {
+          bwt_[i] = 0;
+          pri_ = i;
+        }
+        if constexpr (SA_INTV != 1) {
+          if (i % SA_INTV == 0)
+            sa_[i / SA_INTV] = sa_v;
+        }
+      }
+    }
+
     if constexpr (SA_INTV == 1)
       sa_.swap(ori_sa);
 #ifdef DEBUG
