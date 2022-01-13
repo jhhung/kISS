@@ -1,13 +1,13 @@
 #pragma once
 
 #include <biovoltron/utility/istring.hpp>
+#include <biovoltron/algo/sort/core/sorter.hpp>
 #include <execution>
-#include <numeric>
 
 namespace biovoltron {
 
-struct Sorter {
-  template<typename size_type = std::uint32_t>
+template<typename size_type = std::uint32_t>
+struct StableSorter {
   static auto
   get_sa(istring_view ref, std::size_t sort_len = istring_view::npos) {
     auto sa = std::vector<size_type>(ref.size() + 1);

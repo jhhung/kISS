@@ -1,6 +1,7 @@
 #pragma once
 
-#include <biovoltron/algo/sort/sorter.hpp>
+#include <biovoltron/algo/sort/core/sorter.hpp>
+#include <biovoltron/algo/sort/psais_sorter.hpp>
 #include <biovoltron/container/xbit_vector.hpp>
 #include <biovoltron/utility/archive/serializer.hpp>
 #include <biovoltron/utility/istring.hpp>
@@ -82,6 +83,10 @@ using namespace std::chrono;
  * }
  * ```
  */
+template<
+  typename size_type = std::uint32_t,
+  SASorter Sorter = PsaisSorter<size_type>
+>
 class FMIndex {
  public:
   /**
@@ -102,7 +107,6 @@ class FMIndex {
   const int OCC1_INTV = 256;
   const int OCC2_INTV = OCC_INTV;
 
-  using size_type = std::uint32_t;
   using char_type = std::int8_t;
 
   /**
@@ -257,7 +261,7 @@ class FMIndex {
     std::cout << "sa sort start...(using " << thread_n << " threads)\n";
     start = high_resolution_clock::now();
 #endif
-    auto ori_sa = Sorter::get_sa<size_type>(ref, sort_len);
+    auto ori_sa = Sorter::get_sa(ref, sort_len);
 #ifdef DEBUG
     end = high_resolution_clock::now();
     dur = duration_cast<seconds>(end - start);
