@@ -35,15 +35,14 @@ struct FastaRecord {
   std::conditional_t<Encoded, istring, std::string> seq;
 
   /**
-   * Reverse encoded operator
-   * - if you have exiting FastaRecord (or FastqRecord) object "a" encoded = false by string.
-   *   Now you want to change "a" encoded by integer.
-   *   You can coded "a();" then "a" will changed by integer.
+   * implicit conversion operator (converted to FastaRecord<!Encoded>)
+   * - If you have existing FastaRecord (or FastqRecord) object a = FastaRecord<false>,
+   *   and you want to change a's encoding from std::string to biovoltron::istring,
+   *   this operator allows you to implicitly convert you object to the !Encoded version.
    * Example
    * ```cpp
-   *  FastaRecord<false> a; // "a" encoded by string
-   *  a();                  // "a" encoded by integer (reverse encode)
-   *  a();                  // "a" encoded by string (reverse again)
+   *  FastaRecord<false> a;     // a is encoded by std::string
+   *  FastaRecord<true> b = a;  // b is encoded by biovoltron::istring (using implicit conversion)
    * ```
    */
   operator auto() const {
