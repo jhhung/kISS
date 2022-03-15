@@ -16,60 +16,69 @@ namespace biovoltron {
 using namespace std::chrono;
 
 /**
- * A specialization of FM-Index for genome sequence 
- * which implemented using C++20. 
+ * A specialization of FM-Index for genome sequence
+ * which implemented using C++20.
  *
- * The memory usage for `FMIndex` in run time is affect by above 
- * parameters. Take a `3.1Gb` human genome for example, the 
+ * The memory usage for `FMIndex` in run time is affect by above
+ * parameters. Take a `3.1Gb` human genome for example, the
  * memory occupation can be calculate as follwing:
  * - bwt string: `3.1Gb / 4 = 0.775 Gb`.
- * - hierarchical occurrence table: L1 occ occupy fixed `3.1Gb * 16 / 256 = 0.194Gb` 
+ * - hierarchical occurrence table: L1 occ occupy fixed `3.1Gb * 16 / 256 = 0.194Gb`
  *   plus L2 occ occupy `3.1Gb * 4 / occ_intv(16) = 0.775 Gb`.
- * - suffix array: `3.1Gb * 4 / sa_intv(1) = 12Gb`. Noticed that 
- *   in default mode we dont sampling suffix value since this can 
- *   reduce frequently memory allocation and intense computation 
+ * - suffix array: `3.1Gb * 4 / sa_intv(1) = 12Gb`. Noticed that
+ *   in default mode we dont sampling suffix value since this can
+ *   reduce frequently memory allocation and intense computation
  *   when occurs massive query.
  * - lookup table: `4^lookup_len(14) * 4 / 1024^3 = 1Gb`.
- * 
- * So the default total memory occupation for `3.1Gb` human genome 
+ *
+ * So the default total memory occupation for `3.1Gb` human genome
  * is `0.775 Gb + 0.194Gb + 0.775Gb + 12Gb + 1Gb = 14.744Gb`.
- * 
+ *
  * Example
  * ```cpp
  * #include <iostream>
- * #include <experimental/random>
+ * #include <ranges>
  * #include <biovoltron/algo/align/exact_match/fm_index.hpp>
- *   
- * int main() {
- *   using namespace biovoltron;
- *   using namespace std::string_literals;
- * 
+ * #include <biovoltron/file_io/fasta.hpp>
+ *
+ * using namespace biovoltron;
+ *
+ * int main(int argc, char** argv) {
+ *   if (argc != 2) {
+ *     std::cout << "argv[1] should be your fasta file.\n";
+ *     return 0;
+ *   }
+ *
+ *   auto fname = std::string(argv[1]);
  *   {
+ *     // input
  *     auto ref = istring{};
- *     ref.reserve(3137454505);
- *     auto fin = std::ifstream{"hs37d5.fa"};
- *     for (auto line = ""s; std::getline(fin, line);) {
- *       if (line.front() == '>') {
- *         std::cout << line << "\n";
- *         continue;
- *       }
- *       auto subref = Codec::to_istring(line);
- *       // fm-index only support four characters so we need change 'N' to 'ACGT'
- *       for (auto& c : subref) if (c == 4) c = std::experimental::randint(0, 3);
- *       ref += subref;
- *     }
- *     auto fmi = biovoltron::FMIndex{};
+ *     auto fin = std::ifstream(fname);
+ *     for (const auto& r : std::ranges::istream_view<FastaRecord<true>>(fin))
+ *       ref += r.seq;
+ *
+ *     // fm-index only support 'ACTG', so we need to change 'N' to 'ACGT'
+ *     std::ranges::transform(ref, ref.begin(), [](auto& c) { return c % 4; });
+ *
+ *     // build
+ *     auto fmi = FMIndex{};
  *     fmi.build(ref);
- *     auto fout = std::ofstream{"hs37d5.fmi", std::ios::binary};
+ *
+ *     // save
+ *     auto fout = std::ofstream(fname + ".fmi", std::ios::binary);
  *     fmi.save(fout);
+ *     std::cout << fname + ".fmi saved.\n";
  *   }
- *   
- *   auto fmi = biovoltron::FMIndex{};
+ *
+ *   // load
+ *   auto fmi = FMIndex{};
  *   {
- *     auto fin = std::ifstream{"hs37d5.fmi", std::ios::binary};
+ *     auto fin = std::ifstream(fname + ".fmi", std::ios::binary);
  *     fmi.load(fin);
+ *     std::cout << fname + ".fmi loaded.\n";
  *   }
- *   
+ *
+ *   // query
  *   for (auto seed = istring{}; std::cin >> seed;) {
  *     const auto [beg, end, offset] = fmi.get_range(seed, 0);
  *     std::cout << "seed: " << seed << "\n";
@@ -78,7 +87,7 @@ using namespace std::chrono;
  *     const auto offsets = fmi.get_offsets(beg, end);
  *     std::cout << "ref offsets: ";
  *     for (const auto offset : offsets) std::cout << offset << " ";
- *       std::cout << "\n";
+ *     std::cout << "\n";
  *   }
  * }
  * ```
