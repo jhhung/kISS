@@ -16,8 +16,10 @@ namespace biovoltron {
 using namespace std::chrono;
 
 /**
- * A specialization of FM-Index for genome sequence
- * which implemented using C++20.
+ * @ingroup align
+ * @brief
+ * A specialization of FM-Index for genome sequence 
+ * which implemented using C++20. 
  *
  * The memory usage for `FMIndex` in run time is affect by above
  * parameters. Take a `3.1Gb` human genome for example, the

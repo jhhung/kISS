@@ -715,6 +715,10 @@ auto suffix_array(istring_view s, size_t sort_len = std::string::npos) {
 
 } // namespace psais
 
+/**
+ * @ingroup sort
+ * @brief TBA
+ */
 template<typename size_type = std::uint32_t>
 struct PsaisSorter {
   static auto

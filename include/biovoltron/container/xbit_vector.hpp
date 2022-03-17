@@ -344,6 +344,10 @@ class XbitVectorBase {
   }
 };
 
+/**
+ * @ingroup container
+ * @brief TBA
+ */
 template<std::size_t N, std::unsigned_integral Block,
          std::copy_constructible Allocator>
   requires(!std::same_as<Block, bool>)
@@ -1333,6 +1337,7 @@ XbitVector<N, Block, Allocator>::invariants() const {
 namespace biovoltron {
 
 /**
+ * @ingroup container
  * Space-efficient container for dibit values, you can 
  * think of it as a specialization of `std::vector` for 
  * type `uint2_t`.
@@ -1405,6 +1410,7 @@ template<std::unsigned_integral Block = std::uint8_t,
 using DibitVector = detail::XbitVector<2, Block, Allocator>;
 
 /**
+ * @ingroup container
  * Space-efficient container for quabit values, you can 
  * think of it as a specialization of `std::vector` for 
  * type `uint4_t`.

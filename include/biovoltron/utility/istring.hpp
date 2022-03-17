@@ -21,6 +21,7 @@ inline auto operator""_s(const char* s) {
 }
 
 /**
+ * @ingroup utility
  * Codec for DNA alphabet to integer conversion.
  */
 struct Codec {

@@ -6,6 +6,10 @@
 
 namespace biovoltron {
 
+/**
+ * @ingroup sort
+ * @brief TBA
+ */
 template<typename size_type = std::uint32_t>
 struct StableSorter {
   static auto

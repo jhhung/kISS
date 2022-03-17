@@ -6,36 +6,45 @@
 namespace biovoltron {
 
 /**
- * This is a data structure for reads in fasta and fastq file.
- * - fasta file type to record reference genome.
+ * @ingroup file_io
+ * @brief This is a data structure for fasta file.
+ * @tparam Encoded seq type == istring if Encoded else string
  */
 template<bool Encoded = false>
 struct FastaRecord {
   /**
+   * @brief
    * boolean to define encode type
+   *
    * - encoded = false: encoded by string (ACGT)
    * - encoded = true: encoded by integer (0123)
    */
   constexpr static auto encoded = Encoded;
 
   /**
+   * @brief
    * Start symbol of reference genome
+   *
    * - using ">" in fasta file type
    */
   constexpr static auto START_SYMBOL = '>';
 
   /**
+   * @brief
    * Name of reference genome (or reads in FastqRecord)
    */
   std::string name;
 
   /**
+   * @brief
    * Sequence of reference genome (or reads in FastqRecord)
    */
   std::conditional_t<Encoded, istring, std::string> seq;
 
   /**
+   * @brief
    * implicit conversion operator (converted to FastaRecord<!Encoded>)
+   *
    * - If you have existing FastaRecord (or FastqRecord) object a = FastaRecord<false>,
    *   and you want to change a's encoding from std::string to biovoltron::istring,
    *   this operator allows you to implicitly convert you object to the !Encoded version.
@@ -54,7 +63,10 @@ struct FastaRecord {
 };
 
 /**
- * This is a data structure for reads in fastq file.
+ * @ingroup file_io
+ * @brief This is a data structure for fastq file.
+ *
+ * This is a data structure for fastq file.
  * - inherit from FastaRecord
  * - for fastq file type to record reads after sequencing.
  *   - include reads and reads quality.
@@ -62,19 +74,25 @@ struct FastaRecord {
 template<bool Encoded = false>
 struct FastqRecord : FastaRecord<Encoded> {
   /**
+   * @brief
    * Start symbol of reads
+   *
    * - using "@" in fastq file type
    */
   constexpr static auto START_SYMBOL = '@';
 
   /**
+   * @brief
    * Delimiter between reads and quality of reads
+   *
    * - using "+" in fastq file type
    */
   constexpr static auto DELIM = '+';
 
   /**
+   * @brief
    * Quality of reads
+   *
    * - Quality record by character from "!" to "~"
    *   - encoded by ASCII from 33 to 126 transfer to quality 0~93
    *     - example: "!" ASCIII = (0+33), quality = 0; "?" ASCIII = (30+33), quality = 30
@@ -87,7 +105,9 @@ struct FastqRecord : FastaRecord<Encoded> {
 
 
 /**
+ * @brief
  * read fasta or fastq file and record data into FastaRecord or FastqRecord
+ *
  * - class R "record": must be FastaRecord or FastqRecord (inherit from FastaRecord)
  * - every single genome(reads) will record one FastaRecord(FastqRecord)
  * - All sequences will record into record.seq
@@ -132,7 +152,9 @@ operator>>(std::istream& is, R& record) {
 
 
 /**
+ * @brief
  * output sequence and quality data in FastaRecord or FastqRecord
+ *
  * - class R "record": must be FastaRecord or FastqRecord (inherit from FastaRecord)
  * - All sequences in record.seq will output
  * - if FastqRecord type, program will check record.DELIM and output quality of reads in record.qual.

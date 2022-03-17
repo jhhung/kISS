@@ -8,6 +8,7 @@
 namespace biovoltron {
 
 /**
+ * @ingroup utility
  * A C++20 generalized serializer that can serialize the 
  * [continuous_range][continuous_range] which `value_type` is 
  * [trivially_copyable][trivially_copyable], such as scalar type, 

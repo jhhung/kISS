@@ -5,6 +5,10 @@
 
 namespace biovoltron {
 
+/**
+ * @ingroup utility
+ * @brief TBA
+ */
 class ThreadPool {
   public:
   ThreadPool(int cnt) : thread_cnt(cnt) {
