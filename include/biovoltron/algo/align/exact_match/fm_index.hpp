@@ -8,9 +8,7 @@
 #include <chrono>
 #include <span>
 #include <thread>
-#ifdef DEBUG
-#include <iostream>
-#endif
+#include <spdlog/spdlog.h>
 
 namespace biovoltron {
 using namespace std::chrono;
@@ -248,42 +246,30 @@ class FMIndex {
    */
   void 
   build(istring_view ref) {
-#ifdef DEBUG
-    std::cout << "build FM-index begin...\n";
-    std::cout << "occ sampling interval: " << OCC_INTV << "\n";
-    std::cout << "sa sampling interval: " << SA_INTV << "\n";
-    std::cout << "lookup string length: " << LOOKUP_LEN << "\n";
-#endif
-
-#ifdef DEBUG
-    std::cout << "validate ref...\n";
+    SPDLOG_DEBUG("building FM-index begin...");
+    SPDLOG_DEBUG("occ sampling interval: {}", OCC_INTV);
+    SPDLOG_DEBUG("sa sampling interval: {}", SA_INTV);
+    SPDLOG_DEBUG("lookup string length: {}", LOOKUP_LEN);
+    SPDLOG_DEBUG("validate ref...");
     auto start = high_resolution_clock::now();
-#endif
     validate(ref);
-#ifdef DEBUG
     auto end = high_resolution_clock::now();
     auto dur = duration_cast<seconds>(end - start);
-    std::cout << "elapsed time: " << dur.count() << " s.\n";
-#endif
+    SPDLOG_DEBUG("elapsed time: {} s.", dur.count());
 
     const auto sort_len = std::same_as<Sorter, PsaisSorter<size_type>> ? istring::npos : 256u;
-#ifdef DEBUG
-    std::cout << "only build sa with prefix length: " << sort_len << "\n";
+    SPDLOG_DEBUG("only build sa with prefix length: {}", sort_len);
     const auto thread_n = std::thread::hardware_concurrency();
-    std::cout << "sa sort start...(using " << thread_n << " threads)\n";
+    SPDLOG_DEBUG("sa sort start...(using {} threads)", thread_n);
     start = high_resolution_clock::now();
-#endif
+
     auto ori_sa = Sorter::get_sa(ref, sort_len);
-#ifdef DEBUG
     end = high_resolution_clock::now();
     dur = duration_cast<seconds>(end - start);
-    std::cout << "elapsed time: " << dur.count() << " s.\n";
-#endif
+    SPDLOG_DEBUG("elapsed time: {} s.", dur.count());
 
-#ifdef DEBUG
-    std::cout << "build bwt and sample occ...\n";
+    SPDLOG_DEBUG("build bwt and sample occ...");
     start = high_resolution_clock::now();
-#endif
     auto& [occ1, occ2] = occ_;
     occ1.resize(ori_sa.size() / OCC1_INTV + 2);
     occ2.resize(ori_sa.size() / OCC2_INTV + 1);
@@ -345,37 +331,26 @@ class FMIndex {
 
     if constexpr (SA_INTV == 1)
       sa_.swap(ori_sa);
-#ifdef DEBUG
     end = high_resolution_clock::now();
     dur = duration_cast<seconds>(end - start);
-    std::cout << "elapsed time: " << dur.count() << " s.\n";
-#endif
+    SPDLOG_DEBUG("elapsed time: {} s.", dur.count());
 
-#ifdef DEBUG
-    std::cout << "computing " << (1ull << LOOKUP_LEN * 2)
-              << " suffix for for lookup...(using " << thread_n
-              << " threads)\n";
+    SPDLOG_DEBUG("computing {} suffix for for lookup...(using {} threads)",
+      (1ull << LOOKUP_LEN*2), thread_n);
     start = high_resolution_clock::now();
-#endif
     compute_lookup();
-#ifdef DEBUG
     end = high_resolution_clock::now();
     dur = duration_cast<seconds>(end - start);
-    std::cout << "elapsed time: " << dur.count() << " s.\n";
-#endif
+    SPDLOG_DEBUG("elapsed time: {} s.", dur.count());
 
-#ifdef DEBUG
-    std::cout << "validate lookup...\n";
+    SPDLOG_DEBUG("validate lookup...");
     start = high_resolution_clock::now();
-#endif
 
     assert(std::is_sorted(std::execution::par_unseq, lookup_.cbegin(),
                           lookup_.cend()));
-#ifdef DEBUG
     end = high_resolution_clock::now();
     dur = duration_cast<seconds>(end - start);
-    std::cout << "elapsed time: " << dur.count() << " s.\n";
-#endif
+    SPDLOG_DEBUG("elapsed time: {} s.", dur.count());
   }
 
   /**
@@ -433,33 +408,26 @@ class FMIndex {
    */
   auto
   save(std::ofstream& fout) const {
+/*
 #ifdef DEBUG
     const auto start = high_resolution_clock::now();
 #endif
+*/
+    const auto start = high_resolution_clock::now();
     fout.write(reinterpret_cast<const char*>(&cnt_), sizeof(cnt_));
     fout.write(reinterpret_cast<const char*>(&pri_), sizeof(pri_));
-#ifdef DEBUG
-    std::cout << "save bwt...\n";
-#endif
+    SPDLOG_DEBUG("save bwt...");
     Serializer::save(fout, bwt_);
-#ifdef DEBUG
-    std::cout << "save occ...\n";
-#endif
+    SPDLOG_DEBUG("save occ...");
     Serializer::save(fout, occ_.first);
     Serializer::save(fout, occ_.second);
-#ifdef DEBUG
-    std::cout << "save sa...\n";
-#endif
+    SPDLOG_DEBUG("save sa...");
     Serializer::save(fout, sa_);
-#ifdef DEBUG
-    std::cout << "save lockup...\n";
-#endif
+    SPDLOG_DEBUG("save lookup...");
     Serializer::save(fout, lookup_);
-#ifdef DEBUG
     const auto end = high_resolution_clock::now();
     const auto dur = duration_cast<seconds>(end - start);
-    std::cout << "elapsed time: " << dur.count() << " s.\n";
-#endif
+    SPDLOG_DEBUG("elapsed time: {} s.", dur.count());
   }
 
   /**
@@ -467,34 +435,22 @@ class FMIndex {
    */
   auto
   load(std::ifstream& fin) {
-#ifdef DEBUG
     const auto start = high_resolution_clock::now();
-#endif
     fin.read(reinterpret_cast<char*>(&cnt_), sizeof(cnt_));
     fin.read(reinterpret_cast<char*>(&pri_), sizeof(pri_));
-#ifdef DEBUG
-    std::cout << "load bwt...\n";
-#endif
+    SPDLOG_DEBUG("load bwt...");
     Serializer::load(fin, bwt_);
-#ifdef DEBUG
-    std::cout << "load occ...\n";
-#endif
+    SPDLOG_DEBUG("load occ...");
     Serializer::load(fin, occ_.first);
     Serializer::load(fin, occ_.second);
-#ifdef DEBUG
-    std::cout << "load sa...\n";
-#endif
+    SPDLOG_DEBUG("load sa...");
     Serializer::load(fin, sa_);
-#ifdef DEBUG
-    std::cout << "load lookup...\n";
-#endif
+    SPDLOG_DEBUG("load lookup...");
     Serializer::load(fin, lookup_);
     assert(fin.peek() == EOF);
-#ifdef DEBUG
     const auto end = high_resolution_clock::now();
     const auto dur = duration_cast<seconds>(end - start);
-    std::cout << "elapsed time: " << dur.count() << " s.\n";
-#endif
+    SPDLOG_DEBUG("elapsed time: {} s.", dur.count());
   }
 
   bool

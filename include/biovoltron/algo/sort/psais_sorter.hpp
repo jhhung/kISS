@@ -5,6 +5,7 @@
 #include <biovoltron/algo/sort/core/sorter.hpp>
 #include <execution>
 #include <iostream>
+#include <spdlog/spdlog.h>
 
 #include <thread>
 #include <vector>
@@ -702,14 +703,10 @@ auto suffix_array(istring_view s, size_t sort_len = std::string::npos) {
   );
   ref[s.size()] = 0;
 
-#ifdef DEBUG
   auto bg = std::chrono::high_resolution_clock::now();
-#endif
   auto sa = psais::detail::suffix_array(ref, 5u, sort_len);
-#ifdef DEBUG
   auto ed = std::chrono::high_resolution_clock::now();
-  std::cout << "psais " << (ed - bg).count() / 1e9 << "s. \n";
-#endif
+  SPDLOG_DEBUG("psais {}s. ", (ed - bg).count() / 1e9);
   return sa;
 }
 
