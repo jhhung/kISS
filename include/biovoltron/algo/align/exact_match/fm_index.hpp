@@ -308,7 +308,9 @@ class FMIndex {
     }
 
     bwt_.resize(ori_sa.size());
-    sa_.resize(ori_sa.size() / SA_INTV + 1);
+    if constexpr (SA_INTV != 1)
+      sa_.resize(ori_sa.size() / SA_INTV + 1);
+
 #pragma omp parallel for
     for (auto block_size = size_type{}; block_size < ori_sa.size(); block_size += 4) {
       for (int offset = 0; offset < 4; offset++) {
@@ -331,6 +333,7 @@ class FMIndex {
 
     if constexpr (SA_INTV == 1)
       sa_.swap(ori_sa);
+
     end = high_resolution_clock::now();
     dur = duration_cast<seconds>(end - start);
     SPDLOG_DEBUG("elapsed time: {} s.", dur.count());

@@ -1,5 +1,7 @@
 #pragma once
 #include <thread>
+#include <future>
+#include <mutex>
 #include <queue>
 #include <functional>
 
