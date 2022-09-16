@@ -271,11 +271,10 @@ namespace psais {
 
 #pragma omp parallel for num_threads(INDUCE_NUM_THREADS / 2)
     for (auto i = L; i < R; i++) {
-      auto induced_idx = SA[i] - 1;
-
       if (SA[i] == EMPTY<size_type> or SA[i] == 0) {
         RB[i - L] = {EMPTY<char_type>, 0};
       } else {
+        auto induced_idx = SA[i] - 1;
         RB[i - L] = {S[induced_idx], T[induced_idx]};
       }
     }
