@@ -234,8 +234,8 @@ init_sa(const std::ranges::random_access_range auto& sa,
 template<typename size_type>
 void
 init_rank(const std::ranges::random_access_range auto& sa,
-          const std::ranges::random_access_range auto& rank,
-          const std::ranges::random_access_range auto& buf,
+          std::ranges::random_access_range auto& rank,
+          std::ranges::random_access_range auto& buf,
           std::ranges::random_access_range auto& is_head) {
   auto n2 = (size_type)sa.size() - 1;
   std::vector<bool> have_label(NUM_THREADS);
@@ -279,9 +279,13 @@ init_rank(const std::ranges::random_access_range auto& sa,
       }
     }
   }
-// extra swap
-#pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto i = size_type{}; i < n2 + 1; i++) std::swap(buf[i], rank[i]);
+  // extra swap
+  // #pragma omp parallel for num_threads(NUM_THREADS)
+  //   for (auto i = size_type{}; i < n2 + 1; i++) std::swap(buf[i], rank[i]);
+  auto new_rank
+    = std::ranges::subrange(std::begin(buf), std::begin(buf) + (n2 + 1));
+  buf = rank;
+  rank = new_rank;
 }
 
 template<typename size_type>
@@ -521,7 +525,7 @@ template<typename size_type>
 void
 compact(std::ranges::random_access_range auto& sa,
         const std::ranges::random_access_range auto& rank,
-        const std::ranges::random_access_range auto& buf,
+        std::ranges::random_access_range auto& buf,
         std::ranges::random_access_range auto& is_head,
         size_type index_offset) {
   std::vector<size_type> count_compat(NUM_THREADS + 1);
@@ -557,8 +561,13 @@ compact(std::ranges::random_access_range auto& sa,
       }
     }
   }
-#pragma omp parallel num_threads(NUM_THREADS)
-  for (auto i = size_type{}; i < new_n_; i++) { sa[i] = buf[i]; }
+  // #pragma omp parallel num_threads(NUM_THREADS)
+  //   for (auto i = size_type{}; i < new_n_; i++) { sa[i] = buf[i]; }
+  auto n2 = (size_type)rank.size() - 1;
+  auto new_buf
+    = std::ranges::subrange(std::begin(sa), std::begin(sa) + (n2 + 1));
+  sa = buf;
+  buf = new_buf;
   sa = std::ranges::subrange(std::begin(sa), std::begin(sa) + (new_n_));
   is_head = is_head_buf;
 }
@@ -661,7 +670,7 @@ get_overall_sa(std::ranges::random_access_range auto& sa,
 // rank = first idx of the same-value block
 template<typename size_type>
 void
-prefix_doubling(const std::ranges::random_access_range auto& sa,
+prefix_doubling(std::ranges::random_access_range auto& sa,
                 std::ranges::random_access_range auto& rank,
                 std::ranges::random_access_range auto& buf, size_type sort_len,
                 size_type init_length) {
@@ -691,16 +700,11 @@ prefix_doubling(const std::ranges::random_access_range auto& sa,
     if (sa_dup.size() <= 1)
       break;
   }
-  // for (auto i : sa) std::cout << i << ' ';
-  // std::cout << std::endl;
-  // for (auto i : rank) std::cout << i << ' ';
-  // std::cout << std::endl;
-  // for (auto i : is_head) std::cout << (int)i << ' ';
-  // std::cout << std::endl;
   // epilogue
   get_overall_rank<size_type>(sa_dup, rank, is_head);
   // for (auto i : rank) std::cout << i << ' ';
   // std::cout << std::endl;
+  sa = std::ranges::subrange(std::begin(sa_dup), std::begin(sa_dup) + (n2 + 1));
   get_overall_sa<size_type>(sa, rank);
 }
 

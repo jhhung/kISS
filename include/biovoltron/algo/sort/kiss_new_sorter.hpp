@@ -79,7 +79,7 @@ struct KissNewSorter {
     buf = rank;
     kiss::place_back_lms<size_type>(T, sa, sorted_lms, buf,
                                     compress_block_length);
-    if (std::begin(sorted_lms) != std::begin(SA))
+    if (std::begin(sorted_lms) - std::begin(SA))
       std::copy(std::execution::par, std::begin(sorted_lms),
                 std::begin(sorted_lms) + (n1 + 1), std::begin(SA));
     SPDLOG_DEBUG("Prefix Doubling elapsed {}", new_sw);
