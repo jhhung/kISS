@@ -1,17 +1,18 @@
 #pragma once
 
+#include <spdlog/spdlog.h>
+
 #include <biovoltron/algo/sort/core/sorter.hpp>
 #include <biovoltron/algo/sort/psais_sorter.hpp>
 #include <biovoltron/container/xbit_vector.hpp>
 #include <biovoltron/utility/archive/serializer.hpp>
 #include <biovoltron/utility/istring.hpp>
 #include <chrono>
+#include <execution>
+#include <queue>
 #include <span>
 #include <thread>
-#include <spdlog/spdlog.h>
-#include <queue>
 #include <utility>
-#include <execution>
 
 namespace biovoltron {
 using namespace std::chrono;
@@ -19,15 +20,15 @@ using namespace std::chrono;
 /**
  * @ingroup align
  * @brief
- * A specialization of FM-Index for genome sequence 
- * which implemented using C++20. 
+ * A specialization of FM-Index for genome sequence
+ * which implemented using C++20.
  *
  * The memory usage for `FMIndex` in run time is affect by above
  * parameters. Take a `3.1Gb` human genome for example, the
  * memory occupation can be calculate as follwing:
  * - bwt string: `3.1Gb / 4 = 0.775 Gb`.
- * - hierarchical occurrence table: L1 occ occupy fixed `3.1Gb * 16 / 256 = 0.194Gb`
- *   plus L2 occ occupy `3.1Gb * 4 / occ_intv(16) = 0.775 Gb`.
+ * - hierarchical occurrence table: L1 occ occupy fixed `3.1Gb * 16 / 256 =
+ * 0.194Gb` plus L2 occ occupy `3.1Gb * 4 / occ_intv(16) = 0.775 Gb`.
  * - suffix array: `3.1Gb * 4 / sa_intv(1) = 12Gb`. Noticed that
  *   in default mode we dont sampling suffix value since this can
  *   reduce frequently memory allocation and intense computation
@@ -95,11 +96,8 @@ using namespace std::chrono;
  * }
  * ```
  */
-template<
-  int SA_INTV = 1,
-  typename size_type = std::uint32_t,
-  SASorter Sorter = PsaisSorter<size_type>
->
+template<int SA_INTV = 1, typename size_type = std::uint32_t,
+         SASorter Sorter = PsaisSorter<size_type>>
 class FMIndex {
  public:
   /**
@@ -114,7 +112,6 @@ class FMIndex {
 
   const int OCC1_INTV = 256;
   const int OCC2_INTV = OCC_INTV;
-
 
   using char_type = std::int8_t;
 
@@ -189,7 +186,8 @@ class FMIndex {
     return cnt_[c] + compute_occ(c, i);
   };
 
-  auto compute_b_occ(size_type i) const {
+  auto
+  compute_b_occ(size_type i) const {
     if constexpr (SA_INTV == 1)
       return i;
     else {
@@ -276,27 +274,28 @@ class FMIndex {
                        [](auto c) { return c >= 0 && c <= 3; }));
   }
   static auto
-  validate_sa(istring_view s, const auto &ori_sa) {
+  validate_sa(istring_view s, const auto& ori_sa) {
     assert(s.size() + 1 == ori_sa.size());
 
     auto idx = std::vector<size_type>(s.size());
     std::iota(idx.begin(), idx.end(), 0);
     assert(std::all_of(std::execution::par_unseq, idx.cbegin(), idx.cend(),
-                       [&s, &ori_sa](auto c) { return s.substr(ori_sa[c]) < s.substr(ori_sa[c + 1]); }));
+                       [&s, &ori_sa](auto c) {
+                         return s.substr(ori_sa[c]) < s.substr(ori_sa[c + 1]);
+                       }));
   }
 
   void
-  build_occ(istring_view ref, const auto &ori_sa) {
+  build_occ(istring_view ref, const auto& ori_sa) {
     auto& [occ1, occ2] = occ_;
     occ1.resize(ori_sa.size() / OCC1_INTV + 1);
     occ2.resize(ori_sa.size() / OCC2_INTV + 1);
 #pragma omp parallel for
     for (auto beg = size_type{}; beg < ori_sa.size(); beg += OCC1_INTV) {
-      auto &cnt = occ1[beg / OCC1_INTV];
+      auto& cnt = occ1[beg / OCC1_INTV];
       for (auto i = beg; i < beg + OCC1_INTV; i++) {
         if (i % OCC2_INTV == 0)
-          for (int j = 0; j < 4; j++)
-            occ2[i / OCC2_INTV][j] = cnt[j];
+          for (int j = 0; j < 4; j++) occ2[i / OCC2_INTV][j] = cnt[j];
         if (i == ori_sa.size())
           break;
         const auto sa_v = ori_sa[i];
@@ -305,7 +304,7 @@ class FMIndex {
       }
     }
 
-    for (auto &x : occ1) {
+    for (auto& x : occ1) {
       for (int j = 0; j < 4; j++) {
         cnt_[j] += x[j];
         x[j] = cnt_[j] - x[j];
@@ -320,7 +319,7 @@ class FMIndex {
   }
 
   void
-  build_bwt(istring_view ref, const auto &ori_sa) {
+  build_bwt(istring_view ref, const auto& ori_sa) {
     bwt_.resize(ori_sa.size());
     if constexpr (SA_INTV != 1)
       sa_.resize(ori_sa.size() / SA_INTV + 1);
@@ -340,17 +339,18 @@ class FMIndex {
     }
   }
 
-  void build_sa(istring_view ref, const auto &ori_sa) {
+  void
+  build_sa(istring_view ref, const auto& ori_sa) {
     if constexpr (SA_INTV == 1) {
       sa_ = ori_sa;
-      return ;
+      return;
     }
 
     b_.resize(ori_sa.size());
     b_occ_.resize(ori_sa.size() / B_OCC_INTV + 1);
 #pragma omp parallel for
     for (auto beg = size_type{}; beg < ori_sa.size(); beg += B_OCC_INTV) {
-      auto &cnt = b_occ_[beg / B_OCC_INTV];
+      auto& cnt = b_occ_[beg / B_OCC_INTV];
       for (auto i = beg; i < beg + B_OCC_INTV; i++) {
         if (i == ori_sa.size())
           break;
@@ -361,7 +361,7 @@ class FMIndex {
     }
 
     auto sum = size_type{};
-    for (auto &x : b_occ_) {
+    for (auto& x : b_occ_) {
       sum += x;
       x = sum - x;
     }
@@ -392,14 +392,15 @@ class FMIndex {
     SPDLOG_DEBUG("validate ref...");
     validate_ref(ref);
 
-    const auto sort_len = std::same_as<Sorter, PsaisSorter<size_type>> ? istring::npos : 32u;
+    const auto sort_len
+      = std::same_as<Sorter, PsaisSorter<size_type>> ? istring::npos : 32u;
     SPDLOG_DEBUG("only build sa with prefix length: {}", sort_len);
     auto ori_sa = Sorter::get_sa(ref, sort_len);
     build(ref, ori_sa);
   }
 
   void
-  build(istring_view ref, const auto &ori_sa) {
+  build(istring_view ref, const auto& ori_sa) {
     SPDLOG_DEBUG("validate sa...");
     validate_sa(ref, ori_sa);
 
@@ -426,7 +427,7 @@ class FMIndex {
     SPDLOG_DEBUG("elapsed time: {} s.", dur.count());
 
     SPDLOG_DEBUG("computing {} suffix for for lookup...(using {} threads)",
-      (1ull << LOOKUP_LEN * 2), thread_n);
+                 (1ull << LOOKUP_LEN * 2), thread_n);
     start = high_resolution_clock::now();
     build_lookup();
     end = high_resolution_clock::now();
@@ -443,8 +444,22 @@ class FMIndex {
     SPDLOG_DEBUG("elapsed time: {} s.", dur.count());
   }
 
+  auto
+  get_offsets_traditional(size_type beg, size_type end) const {
+    if constexpr (SA_INTV == 1)
+      return std::span{&sa_[beg], end - beg};
+    else {
+      auto offsets = std::vector<size_type>{};
+      offsets.reserve(end - beg);
+      for (auto i = beg; i < end; i++) {
+        offsets.push_back(compute_sa(i));
+      }
+      return offsets;
+    }
+  }
+
   /**
-   * Compute the suffix array value according to the begin and end. 
+   * Compute the suffix array value according to the begin and end.
    * If sa_intv is 1, this can be done at O(1).
    */
   auto
@@ -466,7 +481,8 @@ class FMIndex {
       };
 
       while (q.size() and offsets.size() < end - beg) {
-        auto [cur_beg, cur_end, cur_dep] = q.front(); q.pop();
+        auto [cur_beg, cur_end, cur_dep] = q.front();
+        q.pop();
 
         // add offset from sampled sa value
         const auto b_occ_cur_beg = compute_b_occ(cur_beg);
@@ -484,11 +500,12 @@ class FMIndex {
           const auto nxt_end = nxt_beg + 1;
           q.emplace(nxt_beg, nxt_end, nxt_dep);
         } else {
-          [&]<auto ... Idx>(std::index_sequence<Idx...>) {
+          [&]<auto... Idx>(std::index_sequence<Idx...>) {
             auto bg = std::array{lf(Idx, cur_beg)...};
             auto ed = std::array{lf(Idx, cur_end)...};
             (enqueue(bg[Idx], ed[Idx], nxt_dep), ...);
-          } (std::make_index_sequence<4>{});
+          }
+          (std::make_index_sequence<4>{});
         }
       }
       return offsets;
@@ -514,7 +531,8 @@ class FMIndex {
     };
 
     while (q.size() and offsets.size() < end - beg) {
-      auto [cur_beg, cur_end, cur_dep] = q.front(); q.pop();
+      auto [cur_beg, cur_end, cur_dep] = q.front();
+      q.pop();
 
       // add offset from sampled sa value
       const auto b_occ_cur_beg = compute_b_occ(cur_beg);
@@ -532,11 +550,12 @@ class FMIndex {
         const auto nxt_end = nxt_beg + 1;
         q.emplace(nxt_beg, nxt_end, nxt_dep);
       } else {
-        [&]<auto ... Idx>(std::index_sequence<Idx...>) {
+        [&]<auto... Idx>(std::index_sequence<Idx...>) {
           auto bg = std::array{lf(Idx, cur_beg)...};
           auto ed = std::array{lf(Idx, cur_end)...};
           (enqueue(bg[Idx], ed[Idx], nxt_dep), ...);
-        } (std::make_index_sequence<4>{});
+        }
+        (std::make_index_sequence<4>{});
       }
     }
 
@@ -552,12 +571,13 @@ class FMIndex {
   }
 
   /**
-   * Get begin and end index of the uncompressed suffix array for the input seed.
-   * Difference between begin and end is the occurrence count in reference.
+   * Get begin and end index of the uncompressed suffix array for the input
+   * seed. Difference between begin and end is the occurrence count in
+   * reference.
    *
    * @param seed Seed to search.
-   * @param stop_cnt The remaining prefix length for the seed. Notice that when 
-   * the stop_cnt is -1, this value always be 0. The stop_cnt can be using to 
+   * @param stop_cnt The remaining prefix length for the seed. Notice that when
+   * the stop_cnt is -1, this value always be 0. The stop_cnt can be using to
    * early stop when occurrence count is not greater than the value.
    * Set to 0 to forbid early stop.
    * @return An array of begin, end index and the match stop position.
@@ -577,7 +597,7 @@ class FMIndex {
 
   /**
    * Save index, utility for serialization.
-   * The binary binary archive file size is same as the memory 
+   * The binary binary archive file size is same as the memory
    * occupation in run time.
    */
   auto

@@ -467,6 +467,7 @@ namespace psais {
     std::exclusive_scan(std::begin(len), std::end(len), std::back_inserter(off),
                         size_type{0});
 
+// FIXME: parallel slow on some repeat case
 #pragma omp parallel for num_threads(num_threads) schedule(dynamic, 1)
     for (auto cid = size_type{}; cid < num_chunks; cid++) {
       auto beg = cid * chunk_size;
@@ -479,6 +480,7 @@ namespace psais {
 
         SA[i] = EMPTY<size_type>;
         while (!__sync_bool_compare_and_swap(&SA[x], EMPTY<size_type>, j)) {}
+        // SA[x] = j;
       }
     }
     return off.back() + len.back();
@@ -532,6 +534,7 @@ namespace psais {
     std::exclusive_scan(std::begin(len), std::end(len), std::back_inserter(off),
                         size_type{});
 
+// FIXME: parallel slow on some repeat case
 #pragma omp parallel for num_threads(num_threads) schedule(dynamic, 1)
     for (auto cid = size_type{}; cid < num_chunks; cid++) {
       auto beg = cid * chunk_size;
@@ -544,6 +547,7 @@ namespace psais {
 
         SA[n - i] = EMPTY<size_type>;
         while (!__sync_bool_compare_and_swap(&SA[x], EMPTY<size_type>, j)) { }
+        // SA[x] = j;
       }
     }
   }
@@ -585,7 +589,7 @@ namespace psais {
       }
     }
 
-    std::exclusive_scan(len.begin(), len.end(), len.begin(), 0);
+    std::exclusive_scan(len.begin(), len.end(), len.begin(), (size_type)0);
 #pragma omp parallel for num_threads(NUM_THREADS)
     for (auto i = size_type{}; i < n; i++) {
       if (is_LMS(T, i)) {
@@ -634,6 +638,7 @@ namespace psais {
         }
       }
 
+// FIXME: parallel slow on some repeat case
 #pragma omp parallel for num_threads(num_threads) schedule(static, chunk_size)
       for (auto i = n1; i >= 1; i--) {
         auto cid = (n1 - i) / chunk_size;
@@ -646,6 +651,7 @@ namespace psais {
 
         SA[i] = EMPTY<size_type>;
         while (!__sync_bool_compare_and_swap(&SA[x], EMPTY<size_type>, j)) {}
+	// SA[x] = j;
       }
     }
   }
