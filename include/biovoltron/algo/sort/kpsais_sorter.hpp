@@ -58,8 +58,8 @@ struct KPsaisSorter {
                        return ref.substr(i, sort_len) < ref.substr(j, sort_len);
                      });
     SPDLOG_DEBUG("StableSort elapsed {}", StableSort_sw);
-    for (auto i : SA) std::cout << i << ' ';
-    std::cout << std::endl;
+    // for (auto i : SA) std::cout << i << ' ';
+    // std::cout << std::endl;
 
     // 5. get bucket
     auto InduceSort_sw = spdlog::stopwatch{};
