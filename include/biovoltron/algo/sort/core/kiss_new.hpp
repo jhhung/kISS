@@ -478,7 +478,7 @@ calculate_new_rank_head(const std::ranges::random_access_range auto& sa,
       if (is_head[i]) {
         local_determine_level = 2;
         local_head_tag = rank[sa[i]];
-        buf[i] = local_head_tag;
+        // buf[i] = local_head_tag;
         local_head_sa_index = i;
       } else if (get_key<size_type>(rank, sa[i], index_offset)
                  != get_key<size_type>(rank, sa[i - 1], index_offset)) {
@@ -511,7 +511,7 @@ calculate_new_rank_head(const std::ranges::random_access_range auto& sa,
       = (tid ? head_sa_index[tid - 1] : size_type{});
     for (auto i = L; i < R; i++) {
       if (is_head[i]) {
-        local_head_tag = buf[i];
+        local_head_tag = rank[sa[i]];
         local_head_sa_index = i;
         is_head[i] = BLOCK_ELEM_TYPE::HEAD;
       } else if (is_new_head[i]) {
