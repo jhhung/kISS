@@ -47,7 +47,7 @@ struct KissNewSorter {
     auto compress_block_length
       = (size_type)(8 * sizeof(size_type) / std::bit_width(K - 1));
     auto n2 = kiss::len_compressed_string<size_type>(T, compress_block_length);
-    SA.reserve(std::max((n2 + 1) * 4, n + 1));
+    SA.reserve(std::max(n2 * 4 + 2, n + 1));
     SA.resize(n1 + 1, psais::EMPTY<size_type>);
 
     // 3. place lms index
@@ -57,27 +57,27 @@ struct KissNewSorter {
     SPDLOG_DEBUG("GetSuffixType elapsed {}", GetLMSPosition_sw);
 
     // 4. compress the string + get LMS positions
-    // FIXME: may suffer from errors if (n2 + 1) * 4 does not fit into
+    // FIXME: may suffer from errors if n2 * 4 + 2 does not fit into
     // size_type
     auto new_sw = spdlog::stopwatch{};
     auto cp1 = spdlog::stopwatch{};
-    SA.resize(std::max((n2 + 1) * 4, n + 1));
+    SA.resize(std::max(n2 * 4 + 2, n + 1));
     auto lms = std::ranges::subrange(std::begin(SA), std::begin(SA) + (n1 + 1));
     auto rank = std::ranges::subrange(std::begin(SA) + (n2 + 1),
-                                      std::begin(SA) + (n2 + 1) * 2);
-    buf = std::ranges::subrange(std::begin(SA) + (n2 + 1) * 2,
-                                std::begin(SA) + (n2 + 1) * 2 + (n1 + 1));
+                                      std::begin(SA) + (n2 * 2 + 1));
+    buf = std::ranges::subrange(std::begin(SA) + (n2 * 2 + 1),
+                                std::begin(SA) + (n2 * 2 + 1) + n1);
     auto starting_position = std::ranges::subrange(
-      std::begin(SA) + (n2 + 1) * 3, std::begin(SA) + (n2 + 1) * 4);
-    auto valid_position = psais::TypeVector(n2 + 1, 0);
+      std::begin(SA) + (n2 * 3 + 1), std::begin(SA) + (n2 * 4 + 2));
+    auto valid_position = psais::TypeVector(n2, 0);
     kiss::compress_string<size_type>(ref, lms, rank, buf, starting_position,
                                      valid_position, K, compress_block_length);
     SPDLOG_DEBUG("Compress string elapsed {}", cp1);
 
     // 5. prefix doubling & place back
-    auto sa = std::ranges::subrange(std::begin(SA) + (n2 + 1) * 2,
-                                    std::begin(SA) + (n2 + 1) * 3);
-    buf = std::ranges::subrange(std::begin(SA), std::begin(SA) + (n2 + 1));
+    auto sa = std::ranges::subrange(std::begin(SA) + (n2 * 2 + 1),
+                                    std::begin(SA) + (n2 * 3 + 1));
+    buf = std::ranges::subrange(std::begin(SA) + 1, std::begin(SA) + (n2 + 1));
     kiss::prefix_doubling(sa, rank, buf, starting_position, sort_len);
     // place back
     auto cp3 = spdlog::stopwatch{};
@@ -85,9 +85,10 @@ struct KissNewSorter {
     buf = rank;
     kiss::place_back_lms<size_type>(T, sa, sorted_lms, buf, starting_position,
                                     valid_position);
-    if (std::begin(sorted_lms) - std::begin(SA))
+    if (std::begin(sorted_lms) - (std::begin(SA) + 1))
       std::copy(std::execution::par, std::begin(sorted_lms),
-                std::begin(sorted_lms) + (n1 + 1), std::begin(SA));
+                std::begin(sorted_lms) + n1, std::begin(SA) + 1);
+    SA[0] = n;
     SPDLOG_DEBUG("Place back elapsed {}", cp3);
     SPDLOG_DEBUG("Prefix Doubling elapsed {}", new_sw);
 
