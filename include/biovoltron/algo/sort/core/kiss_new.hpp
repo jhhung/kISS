@@ -1,7 +1,6 @@
 // FIXME: refactor the code!
 #pragma once
 
-#include <bits/stdc++.h>
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
@@ -33,6 +32,11 @@ enum BLOCK_ELEM_TYPE { NONHEAD = 0, HEAD = 1 };
 using TypeVector = biovoltron::detail::XbitVector<1, std::uint8_t,
                                                   std::allocator<std::uint8_t>>;
 
+// TODO: more details
+// The recorded data for each block in SegmentedSort.
+// block_have_head: whether the block contains head of a segment
+// prev_block_end: the ending index of the first segment
+// terminal_block_head: the starting index of the last segment
 template<typename size_type>
 struct MergeBlockData {
   std::vector<size_type> block_have_head, prev_block_end, terminal_block_head;
@@ -43,6 +47,7 @@ struct MergeBlockData {
   }
 };
 
+// is T[i] an LMS character?
 template<typename size_type>
 auto
 is_LMS(const auto& T, size_type i) {
@@ -52,6 +57,8 @@ is_LMS(const auto& T, size_type i) {
              and T[i] == SUFFIX_TYPE::S_TYPE);
 }
 
+// Partition num_items of items into num_blocks blocks, the function
+// outputs the range for block number block_idx.
 auto
 get_type_block_range(auto num_items, auto num_blocks, auto block_idx) {
   // in order to make TypeVector(a.k.a XBitVector) thread-safe,
@@ -63,6 +70,7 @@ get_type_block_range(auto num_items, auto num_blocks, auto block_idx) {
   return std::tuple{std::min(num_items, L * 8), std::min(num_items, R * 8)};
 }
 
+// Get the length of the encoded string given the compress_block_length (l).
 template<typename size_type>
 auto
 len_compressed_string(const auto& T, size_type compress_block_length) {
@@ -109,6 +117,7 @@ len_compressed_string(const auto& T, size_type compress_block_length) {
   return len;
 }
 
+// Get the lms indices in the reduced reference and store them in buf.
 template<typename size_type>
 void
 get_lms_indices_in_new_string(auto& lms,
@@ -140,6 +149,8 @@ get_lms_indices_in_new_string(auto& lms,
   }
 }
 
+// Reduce the string to encoded form by assigning every compress_block_length-mer into 
+// an integer.
 template<typename size_type>
 void
 compress_string(const std::ranges::random_access_range auto& S, auto& lms,
@@ -168,7 +179,8 @@ compress_string(const std::ranges::random_access_range auto& S, auto& lms,
       auto compressed_value = size_type{};
       for (auto j = l_border; j < r_border; j++) {
         // FIXME: dirty fix!
-        auto character_value = (j < n ? S[j] + 1 : 0);
+        // auto character_value = (j < n ? S[j] + 1 : 0);
+        auto character_value = (j < n ? S[j] : 0);
         compressed_value
           = (compressed_value << right_shift_amount) | character_value;
       }
@@ -180,6 +192,8 @@ compress_string(const std::ranges::random_access_range auto& S, auto& lms,
   starting_position[n2] = n;
 }
 
+// Stable sorting the indicies in elems_i by the consecutive 16-bits in member indicated
+// by right_shift_offset. Output the result to elems_o.
 template<typename size_type>
 void
 init_counting_sort(auto& elems_i, auto& elems_o, auto&& member,
@@ -222,6 +236,7 @@ init_counting_sort(auto& elems_i, auto& elems_o, auto&& member,
   }
 }
 
+// Stable sorting the indicies in elems_i by member. Output the result to elems_o.
 template<typename size_type>
 void
 init_radix_sort(auto& elems_i, auto& elems_o, auto&& member) {
@@ -229,6 +244,7 @@ init_radix_sort(auto& elems_i, auto& elems_o, auto&& member) {
   init_counting_sort<size_type>(elems_o, elems_i, member, 16);
 }
 
+// Perform 1-sort on sa.
 template<typename size_type>
 void
 init_sa(const std::ranges::random_access_range auto& sa,
@@ -237,9 +253,12 @@ init_sa(const std::ranges::random_access_range auto& sa,
   auto n2 = (size_type)sa.size();
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto i = size_type{}; i < n2; i++) { sa[i] = i; }
+  std::swap(sa[n2 - 1], sa[0]);  // to make sure that the last element would be
+                                 // the first of the block
   init_radix_sort<size_type>(sa, buf, rank);
 }
 
+// Calculate the inverse suffix array.
 template<typename size_type>
 void
 init_rank(const std::ranges::random_access_range auto& sa,
@@ -256,10 +275,10 @@ init_rank(const std::ranges::random_access_range auto& sa,
     auto cur_last_label = L;
     bool cur_have_label = false;
     for (auto i = L; i < R; i++) {
-      if (i == 0 || rank[sa[i]] != rank[sa[i - 1]]) {
+      if (i == 0 || rank[sa[i]] != rank[sa[i - 1]] || sa[i - 1] == n2 - 1) {
         is_head[i] = BLOCK_ELEM_TYPE::HEAD;
         cur_have_label = true;
-        cur_last_label = i;
+        cur_last_label = i + 1;
       }
     }
 #pragma omp critical
@@ -280,9 +299,9 @@ init_rank(const std::ranges::random_access_range auto& sa,
     auto [L, R] = get_type_block_range(n2, NUM_THREADS, tid);
     auto cur_last_label = (tid > 0 ? last_label[tid - 1] : 0);
     for (auto i = L; i < R; i++) {
-      if (i == 0 || rank[sa[i]] != rank[sa[i - 1]]) {
-        buf[sa[i]] = i;
-        cur_last_label = i;
+      if (is_head[i]) {
+        buf[sa[i]] = i + 1;
+        cur_last_label = i + 1;
       } else {
         buf[sa[i]] = cur_last_label;
       }
@@ -303,6 +322,8 @@ get_key(const std::ranges::random_access_range auto& rank, size_type idx,
            rank[idx + index_offset];
 }
 
+// Radix sort on range [L, R] in sa by consecutive 16 bits of key, indicated by 
+// bit_offset.
 template<typename size_type>
 void
 radix_sort_bit(const std::ranges::random_access_range auto& sa,
@@ -326,6 +347,7 @@ radix_sort_bit(const std::ranges::random_access_range auto& sa,
   std::swap_ranges(std::begin(sa) + L, std::begin(sa) + R, std::begin(buf) + L);
 }
 
+// Radix sort on range [L, R] in sa by key.
 template<typename size_type>
 void
 sort_same_sa_value(const std::ranges::random_access_range auto& sa,
@@ -344,6 +366,7 @@ sort_same_sa_value(const std::ranges::random_access_range auto& sa,
   }
 }
 
+// Sort each segment in the same block.
 template<typename size_type>
 void
 sort_sa_blocks(const std::ranges::random_access_range auto& sa,
@@ -388,7 +411,6 @@ merge_sa_blocks_recursive(const std::ranges::random_access_range auto& sa,
 
   auto n_ = (size_type)sa.size() - 1;
   auto [mid_block_start, _] = get_type_block_range(n_ + 1, NUM_THREADS, mid);
-  // FIXME: not sure if it is correct
   if (l_terminal_block_head < n_ + 1 && mid_block_start < n_ + 1
       && r_prev_block_end <= n_ + 1 && l_terminal_block_head < mid_block_start
       && mid_block_start < r_prev_block_end) {
@@ -414,6 +436,7 @@ merge_sa_blocks_recursive(const std::ranges::random_access_range auto& sa,
                          new_terminal_block_head);
 }
 
+// merge the blocks by merging the consecutive segments. 
 template<typename size_type>
 void
 merge_sa_blocks(const std::ranges::random_access_range auto& sa,
@@ -454,7 +477,6 @@ template<typename size_type>
 void
 calculate_new_rank_head(const std::ranges::random_access_range auto& sa,
                         std::ranges::random_access_range auto& rank,
-                        std::ranges::random_access_range auto& buf,
                         std::ranges::random_access_range auto& is_head,
                         size_type index_offset) {
   auto n_ = (size_type)sa.size();
@@ -522,22 +544,14 @@ calculate_new_rank_head(const std::ranges::random_access_range auto& sa,
 template<typename size_type>
 void
 compact(std::ranges::random_access_range auto& sa,
-        const std::ranges::random_access_range auto& rank,
         std::ranges::random_access_range auto& buf,
-        std::ranges::random_access_range auto& is_head,
-        const std::ranges::random_access_range auto& starting_position,
-        size_type index_offset, size_type sort_len) {
-  auto sw2 = spdlog::stopwatch{};
+        std::ranges::random_access_range auto& is_head) {
   auto n_ = (size_type)sa.size();
-  auto n2 = (size_type)rank.size();
+  auto n2 = (size_type)buf.size();
   std::vector<size_type> count_compat(NUM_THREADS + 1);
-  std::vector<size_type> have_removed_head(NUM_THREADS),
-    last_removed_head(NUM_THREADS);
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     size_type count_compat_cur = size_type{};
-    size_type local_have_removed_head = size_type{},
-              local_last_removed_head = size_type{};
     auto [L, R] = get_type_block_range(n_, NUM_THREADS, tid);
 
     for (auto i = L; i < R; i++) {
@@ -550,37 +564,20 @@ compact(std::ranges::random_access_range auto& sa,
       // if (!singleton && !length_exceeded)
       if (!singleton)
         count_compat_cur++;
-      else {
-        if (is_head[i]) {
-          local_have_removed_head = 1;
-          local_last_removed_head = i;
-        }
-      }
     }
 #pragma omp critical
-    {
-      count_compat[tid + 1] = count_compat_cur;
-      have_removed_head[tid] = local_have_removed_head;
-      last_removed_head[tid] = local_last_removed_head;
-    }
+    { count_compat[tid + 1] = count_compat_cur; }
   }
   std::inclusive_scan(std::begin(count_compat), std::end(count_compat),
                       std::begin(count_compat));
-  for (auto i = size_type{1}; i < NUM_THREADS; i++) {
-    if (!have_removed_head[i])
-      last_removed_head[i] = last_removed_head[i - 1];
-  }
-  SPDLOG_DEBUG("compact 1 elapsed {}", sw2);
-  sw2 = spdlog::stopwatch{};
 
   auto new_n_ = count_compat[NUM_THREADS];
   auto is_head_buf = TypeVector(new_n_, BLOCK_ELEM_TYPE::NONHEAD);
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     size_type count_compat_cur = count_compat[tid];
-    size_type local_last_removed_head
-      = (tid ? last_removed_head[tid - 1] : size_type{});
     auto [L, R] = get_type_block_range(n_, NUM_THREADS, tid);
+    auto newL = count_compat[tid], newR = count_compat[tid + 1];
 
     for (auto i = L; i < R; i++) {
       bool singleton = is_head[i] && (i + 1 >= n_ || is_head[i + 1]);
@@ -591,23 +588,23 @@ compact(std::ranges::random_access_range auto& sa,
       // if (!singleton && !length_exceeded)
       if (!singleton) {
         buf[count_compat_cur] = sa[i];
-        is_head_buf[count_compat_cur] = is_head[i];
+        if (count_compat_cur - newL < 8
+            || newR - count_compat_cur
+                 < 8) {  // prevent race condition in is_head_buf
+#pragma omp critical
+          { is_head_buf[count_compat_cur] = is_head[i]; }
+        } else {
+          is_head_buf[count_compat_cur] = is_head[i];
+        }
         count_compat_cur++;
-      } else {
-        if (is_head[i])
-          local_last_removed_head = i;
-        else
-          rank[sa[i]] += (i - local_last_removed_head);
       }
     }
   }
-  SPDLOG_DEBUG("compact 2 elapsed {}", sw2);
   auto new_buf = std::ranges::subrange(std::begin(sa), std::begin(sa) + (n2));
   sa = buf;
   buf = new_buf;
   sa = std::ranges::subrange(std::begin(sa), std::begin(sa) + (new_n_));
   is_head = is_head_buf;
-  std::cout << new_n_ << std::endl;
 }
 
 template<typename size_type>
@@ -616,8 +613,7 @@ radix_sort(std::ranges::random_access_range auto& sa,
            std::ranges::random_access_range auto& rank,
            std::ranges::random_access_range auto& buf,
            std::ranges::random_access_range auto& is_head,
-           const std::ranges::random_access_range auto& starting_position,
-           size_type index_offset, size_type sort_len) {
+           size_type index_offset) {
   auto sw2 = spdlog::stopwatch{};
   sort_sa_blocks(sa, rank, buf, is_head, index_offset);
   SPDLOG_DEBUG("sort sa blocks elapsed {}", sw2);
@@ -625,10 +621,10 @@ radix_sort(std::ranges::random_access_range auto& sa,
   merge_sa_blocks(sa, rank, buf, is_head, index_offset);
   SPDLOG_DEBUG("merge sa blocks elapsed {}", sw2);
   sw2 = spdlog::stopwatch{};
-  calculate_new_rank_head(sa, rank, buf, is_head, index_offset);
+  calculate_new_rank_head(sa, rank, is_head, index_offset);
   SPDLOG_DEBUG("calculate new head elapsed {}", sw2);
   sw2 = spdlog::stopwatch{};
-  compact(sa, rank, buf, is_head, starting_position, index_offset, sort_len);
+  compact<size_type>(sa, buf, is_head);
   SPDLOG_DEBUG("compact elapsed {}", sw2);
 }
 
@@ -688,7 +684,7 @@ get_overall_sa(std::ranges::random_access_range auto& sa,
                const std::ranges::random_access_range auto& rank) {
   auto n2 = (size_type)sa.size();
 #pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto i = size_type{}; i < n2; i++) { sa[rank[i]] = i; }
+  for (auto i = size_type{}; i < n2; i++) { sa[rank[i] - 1] = i; }
 }
 
 // the prefix doubling step of the new kISS algorithm.
@@ -698,7 +694,6 @@ void
 prefix_doubling(std::ranges::random_access_range auto& sa,
                 std::ranges::random_access_range auto& rank,
                 std::ranges::random_access_range auto& buf,
-                const std::ranges::random_access_range auto& starting_position,
                 size_type sort_len) {
   // init rank and sa
   auto sw1 = spdlog::stopwatch{};
@@ -709,8 +704,7 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
   SPDLOG_DEBUG("preparing elapsed {}", sw1);
   auto sa_dup = sa;
   for (uint64_t i = 1; i < sort_len; i *= 2) {
-    radix_sort<size_type>(sa_dup, rank, buf, is_head, starting_position, i,
-                          sort_len);
+    radix_sort<size_type>(sa_dup, rank, buf, is_head, i);
     if (sa_dup.size() <= 1)
       break;
   }
@@ -724,10 +718,8 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
 
 template<typename size_type>
 void
-place_back_lms(const std::ranges::random_access_range auto& T,
-               const std::ranges::random_access_range auto& sa,
+place_back_lms(const std::ranges::random_access_range auto& sa,
                std::ranges::random_access_range auto& sorted_lms,
-               const std::ranges::random_access_range auto& buf,
                const std::ranges::random_access_range auto& starting_position,
                const std::ranges::random_access_range auto& valid_position) {
   auto n2 = (size_type)sa.size();
