@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <execution>
+#include <iostream>
 #include <numeric>
 #include <tuple>
 #include <vector>
@@ -91,76 +92,61 @@ get_encoded_reference_length(const auto& lms, size_type l) {
   return length;
 }
 
-// Get the lms indices in the reduced reference and store them in buf.
-template<typename size_type>
-void
-get_lms_indices_in_new_string(auto& lms,
-                              const std::ranges::random_access_range auto& buf,
-                              size_type l) {
-  auto n1 = (size_type)lms.size();
-  std::vector<size_type> block_start(NUM_THREADS);
-  // calculate the entry occupied for each LMS substring
-#pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
-    auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
-    for (auto i = L; i < R; i++) {
-      buf[i] = (lms[i + 1] - lms[i] + l - 1)
-               / l;
-      if (i > L)
-        buf[i] += buf[i - 1];
-    }
-#pragma omp critical
-    { block_start[tid] = buf[R - 1]; }
-  }
-  // prefix sum
-  std::inclusive_scan(std::begin(block_start), std::end(block_start),
-                      std::begin(block_start));
-// add to buf
-#pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto tid = size_type{1}; tid < NUM_THREADS; tid++) {
-    auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
-    for (auto i = L; i < R; i++) { buf[i] += block_start[tid - 1]; }
-  }
-}
-
 // Reduce the string to encoded form by assigning every
 // l-mer into an integer.
 template<typename size_type>
 void
-compress_string(const std::ranges::random_access_range auto& S, auto& lms,
-                auto& rank, const std::ranges::random_access_range auto& buf,
+encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
+                auto& cS, const std::ranges::random_access_range auto& buf,
                 const std::ranges::random_access_range auto& starting_position,
                 std::ranges::random_access_range auto& valid_position,
                 size_type K, size_type l) {
   auto n = (size_type)S.size();
-  auto n2 = (size_type)rank.size();
-  get_lms_indices_in_new_string(lms, buf, l);
-  auto right_shift_amount = std::bit_width(K - 1);
-// calculate the compressed strings
+  auto n1 = (size_type)lms.size();
+  auto n2 = (size_type)cS.size();
+  std::vector<size_type> block_cS_start_index(NUM_THREADS);
+  // Find the starting index of cS for each thread
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
-    auto [L, R] = get_type_block_range(n2, NUM_THREADS, tid);
-    // binary search the first index
-    size_type idx
-      = std::upper_bound(std::begin(buf), std::end(buf), L) - std::begin(buf);
+    auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
+    auto local_block_cS_start_index = size_type{};
+    for (auto i = L; i + 1 < R; i++) {
+      if (i + 1 < n1)
+        local_block_cS_start_index += (lms[i + 1] - lms[i] + l - 1) / l;
+    }
+    if (L != R && R < n1)
+      local_block_cS_start_index += (lms[R] - lms[R - 1] + l - 1) / l;
+#pragma omp critical
+    block_cS_start_index[tid] = local_block_cS_start_index;
+  }
+  // Exclusive scan
+  std::exclusive_scan(block_cS_start_index.begin(), block_cS_start_index.end(),
+                      block_cS_start_index.begin(), size_type{}, std::plus<>{});
+  // Fill in the encoded value
+  auto bits_for_character = std::bit_width(K - 1);
+#pragma omp parallel for num_threads(NUM_THREADS)
+  for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
+    auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
+    auto local_cS_index = block_cS_start_index[tid];
     for (auto i = L; i < R; i++) {
-      if (buf[idx] <= i)
-        idx++;
-      auto offset_count = i - (idx > 0 ? buf[idx - 1] : 0);
-      auto l_border = lms[idx] + offset_count * l;
+      if (i + 1 >= n1)
+        continue;
+      auto encoded_LMS_substring_length = (lms[i + 1] - lms[i] + l - 1) / l;
+      auto l_border = lms[i];
       auto r_border = l_border + l;
-
-      auto compressed_value = size_type{};
-      for (auto j = l_border; j < r_border; j++) {
-        // FIXME: dirty fix!
-        // auto character_value = (j < n ? S[j] + 1 : 0);
-        auto character_value = (j < n ? S[j] : 0);
-        compressed_value
-          = (compressed_value << right_shift_amount) | character_value;
+      for (auto j = 0; j < encoded_LMS_substring_length; j++) {
+        auto encoded = size_type{};
+        for (auto k = l_border; k < r_border; k++) {
+          auto character = (k < n ? S[k] : 0);
+          encoded = (encoded << bits_for_character) | character;
+        }
+        cS[local_cS_index] = encoded;
+        starting_position[local_cS_index] = l_border;
+        valid_position[local_cS_index] = (j == 0);
+        l_border += l;
+        r_border += l;
+        local_cS_index++;
       }
-      rank[i] = compressed_value;
-      starting_position[i] = l_border;
-      valid_position[i] = (offset_count == 0);
     }
   }
   starting_position[n2] = n;

@@ -77,7 +77,7 @@ struct KissNewSorter {
     auto starting_position = std::ranges::subrange(
       std::begin(SA) + (n2 * 3 + 1), std::begin(SA) + (n2 * 4 + 2));
     auto valid_position = psais::TypeVector(n2, 0);
-    kiss::compress_string<size_type>(ref, lms, rank, buf, starting_position,
+    kiss::encode_reference<size_type>(ref, lms, rank, buf, starting_position,
                                      valid_position, K, l);
 
     // 5. prefix doubling & place back
