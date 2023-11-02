@@ -446,21 +446,21 @@ calculate_new_rank_head(const std::ranges::random_access_range auto& sa,
   auto n_ = (size_type)sa.size();
   auto is_new_head = TypeVector(n_, SUFFIX_TYPE::L_TYPE);
   std::vector<size_type> head_tag(NUM_THREADS), head_sa_index(NUM_THREADS);
-  std::vector<int> determine_level(NUM_THREADS);
+  std::vector<int> level(NUM_THREADS);
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n_, NUM_THREADS, tid);
     size_type local_head_tag = size_type{}, local_head_sa_index = size_type{};
-    int local_determine_level = 0;
+    int local_level = 0;
     for (auto i = L; i < R; i++) {
       if (is_head[i]) {
-        local_determine_level = 2;
+        local_level = 2;
         local_head_tag = rank[sa[i]];
         local_head_sa_index = i;
       } else if (get_key<size_type>(rank, sa[i], index_offset)
                  != get_key<size_type>(rank, sa[i - 1], index_offset)) {
         is_new_head[i] = 1;
-        local_determine_level = std::max(local_determine_level, 1);
+        local_level = std::max(local_level, 1);
         local_head_tag = (i - local_head_sa_index) + local_head_tag;
         local_head_sa_index = i;
       }
@@ -469,14 +469,14 @@ calculate_new_rank_head(const std::ranges::random_access_range auto& sa,
     {
       head_tag[tid] = local_head_tag;
       head_sa_index[tid] = local_head_sa_index;
-      determine_level[tid] = local_determine_level;
+      level[tid] = local_level;
     }
   }
   for (auto i = size_type{1}; i < NUM_THREADS; i++) {
-    if (determine_level[i] == 0) {
+    if (level[i] == 0) {
       head_tag[i] = head_tag[i - 1];
       head_sa_index[i] = head_sa_index[i - 1];
-    } else if (determine_level[i] == 1) {
+    } else if (level[i] == 1) {
       head_tag[i] = head_tag[i - 1] + (head_sa_index[i] - head_sa_index[i - 1]);
     }
   }
@@ -512,55 +512,41 @@ compact(std::ranges::random_access_range auto& sa,
         std::ranges::random_access_range auto& is_head) {
   auto n_ = (size_type)sa.size();
   auto n2 = (size_type)buf.size();
-  std::vector<size_type> count_compat(NUM_THREADS + 1);
+  std::vector<size_type> count_compact(NUM_THREADS + 1);
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
-    size_type count_compat_cur = size_type{};
+    size_type local_count_compact = size_type{};
     auto [L, R] = get_type_block_range(n_, NUM_THREADS, tid);
-
     for (auto i = L; i < R; i++) {
       bool singleton = is_head[i] && (i + 1 >= n_ || is_head[i + 1]);
-      // makes the algorithm slower
-      // bool length_exceeded = (sa[i] + index_offset + 1 > n2)
-      //                        || (starting_position[sa[i] + index_offset + 1]
-      //                              - starting_position[sa[i]]
-      //                            >= sort_len);
-      // if (!singleton && !length_exceeded)
       if (!singleton)
-        count_compat_cur++;
+        local_count_compact++;
     }
 #pragma omp critical
-    { count_compat[tid + 1] = count_compat_cur; }
+    { count_compact[tid + 1] = local_count_compact; }
   }
-  std::inclusive_scan(std::begin(count_compat), std::end(count_compat),
-                      std::begin(count_compat));
-
-  auto new_n_ = count_compat[NUM_THREADS];
+  std::inclusive_scan(std::begin(count_compact), std::end(count_compact),
+                      std::begin(count_compact));
+  auto new_n_ = count_compact[NUM_THREADS];
   auto is_head_buf = TypeVector(new_n_, BLOCK_ELEM_TYPE::NONHEAD);
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
-    size_type count_compat_cur = count_compat[tid];
+    size_type local_count_compact = count_compact[tid];
     auto [L, R] = get_type_block_range(n_, NUM_THREADS, tid);
-    auto newL = count_compat[tid], newR = count_compat[tid + 1];
-
+    auto newL = count_compact[tid], newR = count_compact[tid + 1];
     for (auto i = L; i < R; i++) {
       bool singleton = is_head[i] && (i + 1 >= n_ || is_head[i + 1]);
-      // bool length_exceeded = (sa[i] + index_offset + 1 > n2)
-      //                        || (starting_position[sa[i] + index_offset + 1]
-      //                              - starting_position[sa[i]]
-      //                            >= sort_len);
-      // if (!singleton && !length_exceeded)
       if (!singleton) {
-        buf[count_compat_cur] = sa[i];
-        if (count_compat_cur - newL < 8
-            || newR - count_compat_cur
+        buf[local_count_compact] = sa[i];
+        if (local_count_compact - newL < 8
+            || newR - local_count_compact
                  < 8) {  // prevent race condition in is_head_buf
 #pragma omp critical
-          { is_head_buf[count_compat_cur] = is_head[i]; }
+          { is_head_buf[local_count_compact] = is_head[i]; }
         } else {
-          is_head_buf[count_compat_cur] = is_head[i];
+          is_head_buf[local_count_compact] = is_head[i];
         }
-        count_compat_cur++;
+        local_count_compact++;
       }
     }
   }
