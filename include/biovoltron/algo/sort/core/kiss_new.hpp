@@ -559,11 +559,10 @@ compact(std::ranges::random_access_range auto& sa,
 
 template<typename size_type>
 void
-radix_sort(std::ranges::random_access_range auto& sa,
-           std::ranges::random_access_range auto& rank,
-           std::ranges::random_access_range auto& buf,
-           std::ranges::random_access_range auto& is_head,
-           size_type index_offset) {
+h_sort(std::ranges::random_access_range auto& sa,
+       std::ranges::random_access_range auto& rank,
+       std::ranges::random_access_range auto& buf,
+       std::ranges::random_access_range auto& is_head, size_type index_offset) {
   auto sw2 = spdlog::stopwatch{};
   sort_sa_blocks(sa, rank, buf, is_head, index_offset);
   SPDLOG_DEBUG("sort sa blocks elapsed {}", sw2);
@@ -583,30 +582,30 @@ void
 get_overall_rank(const std::ranges::random_access_range auto& sa,
                  const std::ranges::random_access_range auto& rank,
                  const std::ranges::random_access_range auto& is_head) {
-  std::vector<size_type> has_head(NUM_THREADS), head_tag(NUM_THREADS),
+  std::vector<size_type> block_has_head(NUM_THREADS), head_tag(NUM_THREADS),
     head_sa_index(NUM_THREADS);
   auto n_ = (size_type)sa.size();
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n_, NUM_THREADS, tid);
-    bool local_has_head = false;
+    bool local_block_has_head = false;
     size_type local_head_tag = size_type{}, local_head_sa_index = size_type{};
     for (auto i = L; i < R; i++) {
       if (is_head[i]) {
-        local_has_head = true;
+        local_block_has_head = true;
         local_head_tag = rank[sa[i]];
         local_head_sa_index = i;
       }
     }
 #pragma omp critical
     {
-      has_head[tid] = local_has_head;
+      block_has_head[tid] = local_block_has_head;
       head_tag[tid] = local_head_tag;
       head_sa_index[tid] = local_head_sa_index;
     }
   }
   for (auto i = size_type{1}; i < NUM_THREADS; i++) {
-    if (!has_head[i]) {
+    if (!block_has_head[i]) {
       head_tag[i] = head_tag[i - 1];
       head_sa_index[i] = head_sa_index[i - 1];
     }
@@ -655,7 +654,7 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
   SPDLOG_DEBUG("preparing elapsed {}", sw1);
   auto sa_dup = sa;
   for (uint64_t i = 1; i < sort_len; i *= 2) {
-    radix_sort<size_type>(sa_dup, rank, buf, is_head, i);
+    h_sort<size_type>(sa_dup, rank, buf, is_head, i);
     if (sa_dup.size() <= 1)
       break;
   }
