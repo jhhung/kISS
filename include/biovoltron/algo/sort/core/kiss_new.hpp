@@ -97,10 +97,10 @@ get_encoded_reference_length(const auto& lms, size_type l) {
 template<typename size_type>
 void
 encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
-                auto& cS, const std::ranges::random_access_range auto& buf,
-                const std::ranges::random_access_range auto& starting_position,
-                std::ranges::random_access_range auto& valid_position,
-                size_type K, size_type l) {
+                 auto& cS, const std::ranges::random_access_range auto& buf,
+                 const std::ranges::random_access_range auto& starting_position,
+                 std::ranges::random_access_range auto& valid_position,
+                 size_type K, size_type l) {
   auto n = (size_type)S.size();
   auto n1 = (size_type)lms.size();
   auto n2 = (size_type)cS.size();
@@ -156,18 +156,18 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
 // indicated by right_shift_offset. Output the result to elems_o.
 template<typename size_type>
 void
-init_counting_sort(auto& elems_i, auto& elems_o, auto&& member,
-                   auto right_shift_offset) {
-  auto offsets = std::vector<std::vector<size_type>>(
-    NUM_THREADS, std::vector<size_type>(1 << 16, 0));
+initialize_sa_radix_sort_16_bits(auto& elems_i, auto& elems_o, auto&& member,
+                                 auto right_shift_offset) {
+  auto offsets = std::vector(NUM_THREADS, std::vector(1 << 16, size_type{}));
 
+// calculate count for each mask of each thread
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto i = size_type{}; i < elems_i.size(); i++) {
     auto tid = omp_get_thread_num();
     auto& elem = elems_i[i];
     offsets[tid][(member[elem] >> right_shift_offset) & MASK]++;
   }
-
+  // Calculate offset for each mask of each thread
   // FIXME: dirty fix to make NUM_THREADS constant
   auto total = std::vector<size_type>(1 << 16, 0);
   const size_type num_threads = NUM_THREADS;
@@ -178,15 +178,13 @@ init_counting_sort(auto& elems_i, auto& elems_o, auto&& member,
       offsets[tid][i] = x - offsets[tid][i];
     }
   }
-
   std::exclusive_scan(total.begin(), total.end(), total.begin(), size_type{},
                       std::plus<>{});
-
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = 0; tid < NUM_THREADS; tid++) {
     for (auto i = 0; i < (1 << 16); i++) offsets[tid][i] += total[i];
   }
-
+// Place back the elements
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto i = size_type{}; i < elems_i.size(); i++) {
     auto tid = omp_get_thread_num();
@@ -196,75 +194,75 @@ init_counting_sort(auto& elems_i, auto& elems_o, auto&& member,
   }
 }
 
-// Stable sorting the indicies in elems_i by member. Output the result to
-// elems_o.
+// Stable sorting the indicies in arr by member. Output the result to buf.
 template<typename size_type>
 void
-init_radix_sort(auto& elems_i, auto& elems_o, auto&& member) {
-  init_counting_sort<size_type>(elems_i, elems_o, member, 0);
-  init_counting_sort<size_type>(elems_o, elems_i, member, 16);
+initialize_sa_radix_sort(auto& arr, auto& buf, auto&& member) {
+  initialize_sa_radix_sort_16_bits<size_type>(arr, buf, member, 0);
+  initialize_sa_radix_sort_16_bits<size_type>(buf, arr, member, 16);
 }
 
 // Perform 1-sort on sa.
 template<typename size_type>
 void
-init_sa(const std::ranges::random_access_range auto& sa,
-        const std::ranges::random_access_range auto& rank,
-        const std::ranges::random_access_range auto& buf) {
+initialize_sa(const std::ranges::random_access_range auto& sa,
+              const std::ranges::random_access_range auto& rank,
+              const std::ranges::random_access_range auto& buf) {
   auto n2 = (size_type)sa.size();
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto i = size_type{}; i < n2; i++) { sa[i] = i; }
-  std::swap(sa[n2 - 1], sa[0]);  // to make sure that the last element would be
-                                 // the first of the block
-  init_radix_sort<size_type>(sa, buf, rank);
+  std::swap(sa[n2 - 1], sa[0]);  // to make sure that the sentinel would be
+                                 // the first
+  // perform rafix sort based on key rank[i]
+  initialize_sa_radix_sort<size_type>(sa, buf, rank);
 }
 
 // Calculate the inverse suffix array.
 template<typename size_type>
 void
-init_rank(const std::ranges::random_access_range auto& sa,
-          std::ranges::random_access_range auto& rank,
-          std::ranges::random_access_range auto& buf,
-          std::ranges::random_access_range auto& is_head) {
+initialize_rank(const std::ranges::random_access_range auto& sa,
+                std::ranges::random_access_range auto& rank,
+                std::ranges::random_access_range auto& buf,
+                std::ranges::random_access_range auto& is_head) {
   auto n2 = (size_type)sa.size();
-  std::vector<bool> have_label(NUM_THREADS);
-  std::vector<size_type> last_label(NUM_THREADS);
+  std::vector<bool> is_block_has_head(NUM_THREADS);
+  std::vector<size_type> block_last_head(NUM_THREADS);
   // pre scan
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n2, NUM_THREADS, tid);
-    auto cur_last_label = L;
-    bool cur_have_label = false;
+    auto local_block_last_head = L;
+    bool local_block_has_head = false;
     for (auto i = L; i < R; i++) {
       if (i == 0 || rank[sa[i]] != rank[sa[i - 1]] || sa[i - 1] == n2 - 1) {
         is_head[i] = BLOCK_ELEM_TYPE::HEAD;
-        cur_have_label = true;
-        cur_last_label = i + 1;
+        local_block_has_head = true;
+        local_block_last_head = i + 1;
       }
     }
 #pragma omp critical
     {
-      have_label[tid] = cur_have_label;
-      last_label[tid] = cur_last_label;
+      is_block_has_head[tid] = local_block_has_head;
+      block_last_head[tid] = local_block_last_head;
     }
   }
   // collect last labels
   for (auto tid = size_type{1}; tid < NUM_THREADS; tid++) {
-    if (!have_label[tid]) {
-      last_label[tid] = last_label[tid - 1];
+    if (!is_block_has_head[tid]) {
+      block_last_head[tid] = block_last_head[tid - 1];
     }
   }
   // post scan
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n2, NUM_THREADS, tid);
-    auto cur_last_label = (tid > 0 ? last_label[tid - 1] : 0);
+    auto local_block_last_head = (tid > 0 ? block_last_head[tid - 1] : 0);
     for (auto i = L; i < R; i++) {
       if (is_head[i]) {
         buf[sa[i]] = i + 1;
-        cur_last_label = i + 1;
+        local_block_last_head = i + 1;
       } else {
-        buf[sa[i]] = cur_last_label;
+        buf[sa[i]] = local_block_last_head;
       }
     }
   }
@@ -659,9 +657,10 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
   // init rank and sa
   auto sw1 = spdlog::stopwatch{};
   auto n2 = (size_type)sa.size();
-  init_sa<size_type>(sa, rank, buf);
+  initialize_sa<size_type>(sa, rank, buf);
+  // This Boolean array is used for easier implementation.
   auto is_head = TypeVector(n2, BLOCK_ELEM_TYPE::NONHEAD);
-  init_rank<size_type>(sa, rank, buf, is_head);
+  initialize_rank<size_type>(sa, rank, buf, is_head);
   SPDLOG_DEBUG("preparing elapsed {}", sw1);
   auto sa_dup = sa;
   for (uint64_t i = 1; i < sort_len; i *= 2) {
@@ -670,7 +669,6 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
       break;
   }
   // epilogue
-  sa = std::ranges::subrange(std::begin(sa_dup), std::begin(sa_dup) + (n2));
   auto sw3 = spdlog::stopwatch{};
   get_overall_rank<size_type>(sa_dup, rank, is_head);
   get_overall_sa<size_type>(sa, rank);
