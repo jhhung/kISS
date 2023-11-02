@@ -37,8 +37,8 @@ struct KissNewSorter {
                std::ranges::random_access_range auto& SA, size_type sort_len) {
     size_type n = ref.size();
 
-    // 1. Type Array Generation: processes the reference string S and generates a
-    // Boolean array T (referred to as the "type array") with a length of |S|.
+    // 1. Type Array Generation: processes the reference string S and generates
+    // a Boolean array T (referred to as the "type array") with a length of |S|.
     // This array characterizes the type of each suffix in the input string.
     auto sw = spdlog::stopwatch{};
     auto T = psais::TypeVector(n, psais::SUFFIX_TYPE::L_TYPE);
@@ -48,16 +48,12 @@ struct KissNewSorter {
     // 2. prepare lms array
     sw = spdlog::stopwatch{};
     auto n1 = psais::num_lms<size_type>(T);
-    auto compress_block_length
-      = (size_type)(8 * sizeof(size_type) / std::bit_width(K - 1));
-    auto n2 = kiss::len_compressed_string<size_type>(T, compress_block_length);
-    std::cout << n2 << std::endl;
-    SA.reserve(std::max(n2 * 4 + 2, n + 1));
     SA.resize(n1 + 1, psais::EMPTY<size_type>);
 
     // 3. place lms index
-    auto buf = std::ranges::subrange(std::begin(SA), std::end(SA) - 1);
-    psais::put_lms_suffix_left_shift<size_type>(T, buf);
+    auto lms_without_sentinel
+      = std::ranges::subrange(std::begin(SA), std::end(SA) - 1);
+    psais::put_lms_suffix_left_shift<size_type>(T, lms_without_sentinel);
     SA.back() = n;
     SPDLOG_DEBUG("GetLMSPositions elapsed {}", sw);
 
@@ -65,17 +61,24 @@ struct KissNewSorter {
     // FIXME: may suffer from errors if n2 * 4 + 2 does not fit into
     // size_type
     sw = spdlog::stopwatch{};
+    // Consecutive l-mers will be encoded into one integer.
+    size_type l = 8 * sizeof(size_type) / std::bit_width(K - 1);
+    // The length of the encoded string is precalculated to estimate memory
+    // usage precisely.
+    auto n2 = kiss::get_encoded_reference_length<size_type>(SA, l);
     SA.resize(std::max(n2 * 4 + 2, n + 1));
+    // Identify the range for lms (LMS), rank (Inverse suffix array), buf
+    // (buffer), stating_position and valid_position
     auto lms = std::ranges::subrange(std::begin(SA), std::begin(SA) + (n1 + 1));
     auto rank = std::ranges::subrange(std::begin(SA) + (n2 + 1),
                                       std::begin(SA) + (n2 * 2 + 1));
-    buf = std::ranges::subrange(std::begin(SA) + (n2 * 2 + 1),
-                                std::begin(SA) + (n2 * 2 + 1) + n1);
+    auto buf = std::ranges::subrange(std::begin(SA) + (n2 * 2 + 1),
+                                     std::begin(SA) + (n2 * 2 + 1) + n1);
     auto starting_position = std::ranges::subrange(
       std::begin(SA) + (n2 * 3 + 1), std::begin(SA) + (n2 * 4 + 2));
     auto valid_position = psais::TypeVector(n2, 0);
     kiss::compress_string<size_type>(ref, lms, rank, buf, starting_position,
-                                     valid_position, K, compress_block_length);
+                                     valid_position, K, l);
 
     // 5. prefix doubling & place back
     auto sa = std::ranges::subrange(std::begin(SA) + (n2 * 2 + 1),

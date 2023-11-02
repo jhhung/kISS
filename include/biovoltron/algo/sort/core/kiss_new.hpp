@@ -73,48 +73,22 @@ get_type_block_range(auto num_items, auto num_blocks, auto block_idx) {
 // Get the length of the encoded string given the compress_block_length (l).
 template<typename size_type>
 auto
-len_compressed_string(const auto& T, size_type compress_block_length) {
-  auto n = (size_type)T.size();
-  std::vector<size_type> appear(NUM_THREADS), first_place(NUM_THREADS),
-    last_place(NUM_THREADS);
-  auto len = size_type{};
-
+get_encoded_reference_length(const auto& lms, size_type l) {
+  auto n1 = (size_type)lms.size();
+  auto length = size_type{};
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
-    auto [L, R] = get_type_block_range(n, NUM_THREADS, tid);
-    bool cur_appear = false;
-    auto cur_first = R, cur_last = L;
-    auto local_len = size_type{};
-    for (auto i = L; i < R; i++) {
-      if (!is_LMS(T, i))
-        continue;
-      if (cur_appear) {
-        local_len
-          += (i - cur_last + compress_block_length - 1) / compress_block_length;
-        cur_last = i;
-      } else {
-        cur_first = i;
-        cur_last = i;
-      }
-      cur_appear = true;
+    auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
+    auto local_length_count = size_type{};
+    for (auto i = L; i + 1 < R; i++) {
+      local_length_count += (lms[i + 1] - lms[i] + l - 1) / l;
     }
-#pragma omp critical
-    {
-      len += local_len;
-      appear[tid] = cur_appear;
-      first_place[tid] = cur_first;
-      last_place[tid] = cur_last;
-    }
+    if (L != R && R < n1)
+      local_length_count += (lms[R] - lms[R - 1] + l - 1) / l;
+#pragma omp atomic
+    length += local_length_count;
   }
-  auto last_lms = n;
-  for (auto i = size_type{NUM_THREADS - 1}; ~i; i--) {
-    if (appear[i]) {
-      len += (last_lms - last_place[i] + compress_block_length - 1)
-             / compress_block_length;
-      last_lms = first_place[i];
-    }
-  }
-  return len;
+  return length;
 }
 
 // Get the lms indices in the reduced reference and store them in buf.
@@ -149,8 +123,8 @@ get_lms_indices_in_new_string(auto& lms,
   }
 }
 
-// Reduce the string to encoded form by assigning every compress_block_length-mer into 
-// an integer.
+// Reduce the string to encoded form by assigning every
+// compress_block_length-mer into an integer.
 template<typename size_type>
 void
 compress_string(const std::ranges::random_access_range auto& S, auto& lms,
@@ -192,8 +166,8 @@ compress_string(const std::ranges::random_access_range auto& S, auto& lms,
   starting_position[n2] = n;
 }
 
-// Stable sorting the indicies in elems_i by the consecutive 16-bits in member indicated
-// by right_shift_offset. Output the result to elems_o.
+// Stable sorting the indicies in elems_i by the consecutive 16-bits in member
+// indicated by right_shift_offset. Output the result to elems_o.
 template<typename size_type>
 void
 init_counting_sort(auto& elems_i, auto& elems_o, auto&& member,
@@ -236,7 +210,8 @@ init_counting_sort(auto& elems_i, auto& elems_o, auto&& member,
   }
 }
 
-// Stable sorting the indicies in elems_i by member. Output the result to elems_o.
+// Stable sorting the indicies in elems_i by member. Output the result to
+// elems_o.
 template<typename size_type>
 void
 init_radix_sort(auto& elems_i, auto& elems_o, auto&& member) {
@@ -322,7 +297,7 @@ get_key(const std::ranges::random_access_range auto& rank, size_type idx,
            rank[idx + index_offset];
 }
 
-// Radix sort on range [L, R] in sa by consecutive 16 bits of key, indicated by 
+// Radix sort on range [L, R] in sa by consecutive 16 bits of key, indicated by
 // bit_offset.
 template<typename size_type>
 void
@@ -436,7 +411,7 @@ merge_sa_blocks_recursive(const std::ranges::random_access_range auto& sa,
                          new_terminal_block_head);
 }
 
-// merge the blocks by merging the consecutive segments. 
+// merge the blocks by merging the consecutive segments.
 template<typename size_type>
 void
 merge_sa_blocks(const std::ranges::random_access_range auto& sa,
