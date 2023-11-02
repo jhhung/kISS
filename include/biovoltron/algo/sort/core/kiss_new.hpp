@@ -33,21 +33,6 @@ enum BLOCK_ELEM_TYPE { NONHEAD = 0, HEAD = 1 };
 using TypeVector = biovoltron::detail::XbitVector<1, std::uint8_t,
                                                   std::allocator<std::uint8_t>>;
 
-// TODO: more details
-// The recorded data for each block in SegmentedSort.
-// block_have_head: whether the block contains head of a segment
-// prev_block_end: the ending index of the first segment
-// terminal_block_head: the starting index of the last segment
-template<typename size_type>
-struct MergeBlockData {
-  std::vector<size_type> block_have_head, prev_block_end, terminal_block_head;
-  MergeBlockData(size_type threads) {
-    block_have_head.resize(threads);
-    prev_block_end.resize(threads);
-    terminal_block_head.resize(threads);
-  }
-};
-
 // is T[i] an LMS character?
 template<typename size_type>
 auto
@@ -347,51 +332,73 @@ sort_sa_blocks(const std::ranges::random_access_range auto& sa,
   }
 }
 
+// TODO: more details
+// The recorded data for each block in SegmentedSort.
+// block_has_head: whether the block contains head of a segment
+// first_segment_end: the ending index of the first segment
+// last_segment_head: the starting index of the last segment
 template<typename size_type>
-std::tuple<bool, size_type, size_type>
-merge_sa_blocks_recursive(const std::ranges::random_access_range auto& sa,
-                          const std::ranges::random_access_range auto& rank,
-                          const std::ranges::random_access_range auto& buf,
-                          MergeBlockData<size_type>& merge_block_data,
-                          size_type index_offset, size_type L, size_type R) {
+struct MergeBlockData {
+  bool is_block_has_head;
+  size_type first_segment_end;
+  size_type last_segment_head;
+  MergeBlockData()
+  : is_block_has_head(false),
+    first_segment_end(size_type{}),
+    last_segment_head(size_type{}) { }
+  MergeBlockData(bool is_block_has_head_, size_type first_segment_end_,
+                 size_type last_segment_head_)
+  : is_block_has_head(is_block_has_head_),
+    first_segment_end(first_segment_end_),
+    last_segment_head(last_segment_head_) { }
+};
+
+template<typename size_type>
+MergeBlockData<size_type>
+merge_sa_blocks_recursive(
+  const std::ranges::random_access_range auto& sa,
+  const std::ranges::random_access_range auto& rank,
+  const std::ranges::random_access_range auto& buf,
+  std::vector<MergeBlockData<size_type>>& merge_block_data_list,
+  size_type index_offset, size_type L, size_type R) {
   if (L + 1 == R) {
-    return std::make_tuple(merge_block_data.block_have_head[L],
-                           merge_block_data.prev_block_end[L],
-                           merge_block_data.terminal_block_head[L]);
+    return merge_block_data_list[L];
   }
   auto mid = (L + R) / 2;
-  auto [l_have_head, l_prev_block_end, l_terminal_block_head]
-    = merge_sa_blocks_recursive(sa, rank, buf, merge_block_data, index_offset,
-                                L, mid);
-  auto [r_have_head, r_prev_block_end, r_terminal_block_head]
-    = merge_sa_blocks_recursive(sa, rank, buf, merge_block_data, index_offset,
-                                mid, R);
-
+  auto [l_has_head, l_first_segment_end, l_last_segment_head]
+    = merge_sa_blocks_recursive(sa, rank, buf, merge_block_data_list,
+                                index_offset, L, mid);
+  auto [r_has_head, r_first_segment_end, r_last_segment_head]
+    = merge_sa_blocks_recursive(sa, rank, buf, merge_block_data_list,
+                                index_offset, mid, R);
   auto n_ = (size_type)sa.size() - 1;
   auto [mid_block_start, _] = get_type_block_range(n_ + 1, NUM_THREADS, mid);
-  if (l_terminal_block_head < n_ + 1 && mid_block_start < n_ + 1
-      && r_prev_block_end <= n_ + 1 && l_terminal_block_head < mid_block_start
-      && mid_block_start < r_prev_block_end) {
-    std::merge(std::execution::par, std::begin(sa) + l_terminal_block_head,
+  bool is_indicies_in_range
+    = (l_last_segment_head < n_ + 1 && mid_block_start < n_ + 1
+       && r_first_segment_end <= n_ + 1);
+  bool is_ranges_in_order = (l_last_segment_head < mid_block_start
+                             && mid_block_start < r_first_segment_end);
+  if (is_indicies_in_range && is_ranges_in_order) {
+    auto comparator = [&](size_type idx1, size_type idx2) {
+      return get_key(rank, idx1, index_offset)
+             < get_key(rank, idx2, index_offset);
+    };
+    std::merge(std::execution::par, std::begin(sa) + l_last_segment_head,
                std::begin(sa) + mid_block_start,
                std::begin(sa) + mid_block_start,
-               std::begin(sa) + r_prev_block_end,
-               std::begin(buf) + l_terminal_block_head,
-               [&](size_type idx1, size_type idx2) {
-                 return get_key(rank, idx1, index_offset)
-                        < get_key(rank, idx2, index_offset);
-               });
-    std::swap_ranges(std::begin(sa) + l_terminal_block_head,
-                     std::begin(sa) + r_prev_block_end,
-                     std::begin(buf) + l_terminal_block_head);
+               std::begin(sa) + r_first_segment_end,
+               std::begin(buf) + l_last_segment_head, comparator);
+    std::swap_ranges(std::begin(sa) + l_last_segment_head,
+                     std::begin(sa) + r_first_segment_end,
+                     std::begin(buf) + l_last_segment_head);
   }
-
-  auto new_have_head = (l_have_head || r_have_head);
-  auto new_prev_block_end = (l_have_head ? l_prev_block_end : r_prev_block_end);
-  auto new_terminal_block_head
-    = (r_have_head ? r_terminal_block_head : l_terminal_block_head);
-  return std::make_tuple(new_have_head, new_prev_block_end,
-                         new_terminal_block_head);
+  auto new_has_head = (l_has_head || r_has_head);
+  auto new_first_segment_end
+    = (l_has_head ? l_first_segment_end : r_first_segment_end);
+  auto new_last_segment_head
+    = (r_has_head ? r_last_segment_head : l_last_segment_head);
+  return MergeBlockData(new_has_head, new_first_segment_end,
+                        new_last_segment_head);
 }
 
 // merge the blocks by merging the consecutive segments.
@@ -402,32 +409,31 @@ merge_sa_blocks(const std::ranges::random_access_range auto& sa,
                 const std::ranges::random_access_range auto& buf,
                 const std::ranges::random_access_range auto& is_head,
                 size_type index_offset) {
-  MergeBlockData merge_block_data(NUM_THREADS);
+  std::vector<MergeBlockData<size_type>> merge_block_data_list(NUM_THREADS);
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto n_ = (size_type)sa.size() - 1;
     auto [L, R] = get_type_block_range(n_ + 1, NUM_THREADS, tid);
 
-    size_type local_prev_block_end = L, local_terminal_block_head = L;
+    size_type local_first_segment_end = L, local_last_segment_head = L;
     bool have_true = false;
     for (size_type i = L; i < R; i++) {
       if (!have_true)
-        local_prev_block_end = i;
+        local_first_segment_end = i;
       if (is_head[i]) {
         have_true = true;
-        local_terminal_block_head = i;
+        local_last_segment_head = i;
       }
     }
     if (!have_true && L < n_ + 1)
-      local_prev_block_end++;
+      local_first_segment_end++;
 #pragma omp critical
     {
-      merge_block_data.block_have_head[tid] = have_true;
-      merge_block_data.prev_block_end[tid] = local_prev_block_end;
-      merge_block_data.terminal_block_head[tid] = local_terminal_block_head;
+      merge_block_data_list[tid] = MergeBlockData(
+        have_true, local_first_segment_end, local_last_segment_head);
     }
   }
-  merge_sa_blocks_recursive(sa, rank, buf, merge_block_data, index_offset,
+  merge_sa_blocks_recursive(sa, rank, buf, merge_block_data_list, index_offset,
                             size_type{}, NUM_THREADS);
 }
 
@@ -591,30 +597,30 @@ void
 get_overall_rank(const std::ranges::random_access_range auto& sa,
                  const std::ranges::random_access_range auto& rank,
                  const std::ranges::random_access_range auto& is_head) {
-  std::vector<size_type> have_head(NUM_THREADS), head_tag(NUM_THREADS),
+  std::vector<size_type> has_head(NUM_THREADS), head_tag(NUM_THREADS),
     head_sa_index(NUM_THREADS);
   auto n_ = (size_type)sa.size();
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n_, NUM_THREADS, tid);
-    bool local_have_head = false;
+    bool local_has_head = false;
     size_type local_head_tag = size_type{}, local_head_sa_index = size_type{};
     for (auto i = L; i < R; i++) {
       if (is_head[i]) {
-        local_have_head = true;
+        local_has_head = true;
         local_head_tag = rank[sa[i]];
         local_head_sa_index = i;
       }
     }
 #pragma omp critical
     {
-      have_head[tid] = local_have_head;
+      has_head[tid] = local_has_head;
       head_tag[tid] = local_head_tag;
       head_sa_index[tid] = local_head_sa_index;
     }
   }
   for (auto i = size_type{1}; i < NUM_THREADS; i++) {
-    if (!have_head[i]) {
+    if (!has_head[i]) {
       head_tag[i] = head_tag[i - 1];
       head_sa_index[i] = head_sa_index[i - 1];
     }
