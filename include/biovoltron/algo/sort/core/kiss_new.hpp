@@ -96,7 +96,7 @@ template<typename size_type>
 void
 get_lms_indices_in_new_string(auto& lms,
                               const std::ranges::random_access_range auto& buf,
-                              size_type compress_block_length) {
+                              size_type l) {
   auto n1 = (size_type)lms.size();
   std::vector<size_type> block_start(NUM_THREADS);
   // calculate the entry occupied for each LMS substring
@@ -104,8 +104,8 @@ get_lms_indices_in_new_string(auto& lms,
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
     for (auto i = L; i < R; i++) {
-      buf[i] = (lms[i + 1] - lms[i] + compress_block_length - 1)
-               / compress_block_length;
+      buf[i] = (lms[i + 1] - lms[i] + l - 1)
+               / l;
       if (i > L)
         buf[i] += buf[i - 1];
     }
@@ -124,17 +124,17 @@ get_lms_indices_in_new_string(auto& lms,
 }
 
 // Reduce the string to encoded form by assigning every
-// compress_block_length-mer into an integer.
+// l-mer into an integer.
 template<typename size_type>
 void
 compress_string(const std::ranges::random_access_range auto& S, auto& lms,
                 auto& rank, const std::ranges::random_access_range auto& buf,
                 const std::ranges::random_access_range auto& starting_position,
                 std::ranges::random_access_range auto& valid_position,
-                size_type K, size_type compress_block_length) {
+                size_type K, size_type l) {
   auto n = (size_type)S.size();
   auto n2 = (size_type)rank.size();
-  get_lms_indices_in_new_string(lms, buf, compress_block_length);
+  get_lms_indices_in_new_string(lms, buf, l);
   auto right_shift_amount = std::bit_width(K - 1);
 // calculate the compressed strings
 #pragma omp parallel for num_threads(NUM_THREADS)
@@ -147,8 +147,8 @@ compress_string(const std::ranges::random_access_range auto& S, auto& lms,
       if (buf[idx] <= i)
         idx++;
       auto offset_count = i - (idx > 0 ? buf[idx - 1] : 0);
-      auto l_border = lms[idx] + offset_count * compress_block_length;
-      auto r_border = l_border + compress_block_length;
+      auto l_border = lms[idx] + offset_count * l;
+      auto r_border = l_border + l;
 
       auto compressed_value = size_type{};
       for (auto j = l_border; j < r_border; j++) {
