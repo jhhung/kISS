@@ -285,11 +285,11 @@ get_key(const std::ranges::random_access_range auto& rank, size_type idx,
 // bit_offset.
 template<typename size_type>
 void
-radix_sort_bit(const std::ranges::random_access_range auto& sa,
-               const std::ranges::random_access_range auto& rank,
-               const std::ranges::random_access_range auto& buf,
-               size_type index_offset, size_type L, size_type R,
-               int bit_offset) {
+sort_sa_same_first_value_16_bits(
+  const std::ranges::random_access_range auto& sa,
+  const std::ranges::random_access_range auto& rank,
+  const std::ranges::random_access_range auto& buf, size_type index_offset,
+  size_type L, size_type R, int bit_offset) {
   std::vector<size_type> start((1 << 16) + 1);
   for (auto i = L; i < R; i++) {
     size_type key = get_key(rank, sa[i], index_offset);
@@ -309,19 +309,18 @@ radix_sort_bit(const std::ranges::random_access_range auto& sa,
 // Radix sort on range [L, R] in sa by key.
 template<typename size_type>
 void
-sort_same_sa_value(const std::ranges::random_access_range auto& sa,
-                   const std::ranges::random_access_range auto& rank,
-                   const std::ranges::random_access_range auto& buf,
-                   size_type index_offset, size_type L, size_type R) {
+sort_sa_same_first_value(const std::ranges::random_access_range auto& sa,
+                         const std::ranges::random_access_range auto& rank,
+                         const std::ranges::random_access_range auto& buf,
+                         size_type index_offset, size_type L, size_type R) {
   if (R - L <= (1 << 10)) {  // threshold can be adjusted
-    std::stable_sort(std::begin(sa) + L, std::begin(sa) + R,
-                     [&](size_type idx1, size_type idx2) {
-                       return get_key(rank, idx1, index_offset)
-                              < get_key(rank, idx2, index_offset);
-                     });
+    auto comparator = [&rank, index_offset](size_type i, size_type j) {
+      return get_key(rank, i, index_offset) < get_key(rank, j, index_offset);
+    };
+    std::stable_sort(std::begin(sa) + L, std::begin(sa) + R, comparator);
   } else {
-    radix_sort_bit(sa, rank, buf, index_offset, L, R, 0);
-    radix_sort_bit(sa, rank, buf, index_offset, L, R, 16);
+    sort_sa_same_first_value_16_bits(sa, rank, buf, index_offset, L, R, 0);
+    sort_sa_same_first_value_16_bits(sa, rank, buf, index_offset, L, R, 16);
   }
 }
 
@@ -340,11 +339,11 @@ sort_sa_blocks(const std::ranges::random_access_range auto& sa,
     auto last_left = L;
     for (auto i = L; i < R; i++) {
       if (is_head[i]) {
-        sort_same_sa_value(sa, rank, buf, index_offset, last_left, i);
+        sort_sa_same_first_value(sa, rank, buf, index_offset, last_left, i);
         last_left = i;
       }
     }
-    sort_same_sa_value(sa, rank, buf, index_offset, last_left, R);
+    sort_sa_same_first_value(sa, rank, buf, index_offset, last_left, R);
   }
 }
 
