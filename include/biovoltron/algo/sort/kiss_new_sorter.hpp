@@ -81,15 +81,15 @@ struct KissNewSorter {
                                      valid_position, K, l);
 
     // 5. prefix doubling & place back
+    // prefix doubling
     auto sa = std::ranges::subrange(std::begin(SA) + (n2 * 2 + 1),
                                     std::begin(SA) + (n2 * 3 + 1));
-    buf = std::ranges::subrange(std::begin(SA) + 1, std::begin(SA) + (n2 + 1));
-    kiss::prefix_doubling(sa, rank, buf, sort_len);
+    auto sorted_lms = std::ranges::subrange(std::begin(SA) + 1, std::begin(SA) + (n2 + 1));
+    kiss::prefix_doubling(sa, rank, sorted_lms, sort_len);
     // place back
-    auto sorted_lms = buf;
-    buf = rank;
     kiss::place_back_lms<size_type>(sa, sorted_lms, starting_position,
                                     valid_position);
+    // place sorted_lms to the beginning of SA
     if (std::begin(sorted_lms) - (std::begin(SA) + 1))
       std::copy(std::execution::par, std::begin(sorted_lms),
                 std::begin(sorted_lms) + n1, std::begin(SA) + 1);
@@ -104,6 +104,7 @@ struct KissNewSorter {
     // 7. induce SA
     sw = spdlog::stopwatch{};
     SA.resize(n + 1, psais::EMPTY<size_type>);
+    // set the rest of SA to default value
     auto remain_len = (n - n1);
 #pragma omp parallel for num_threads(std::thread::hardware_concurrency())
     for (auto i = size_type{}; i < remain_len; i++) {
