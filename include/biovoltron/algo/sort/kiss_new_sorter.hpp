@@ -84,9 +84,10 @@ struct KissNewSorter {
     // prefix doubling
     auto sa = std::ranges::subrange(std::begin(SA) + (n2 * 2 + 1),
                                     std::begin(SA) + (n2 * 3 + 1));
-    auto sorted_lms = std::ranges::subrange(std::begin(SA) + 1, std::begin(SA) + (n2 + 1));
-    kiss::prefix_doubling(sa, rank, sorted_lms, sort_len);
+    buf = std::ranges::subrange(std::begin(SA) + 1, std::begin(SA) + (n2 + 1));
+    kiss::prefix_doubling(sa, rank, buf, sort_len);
     // place back
+    auto sorted_lms = buf;
     kiss::place_back_lms<size_type>(sa, sorted_lms, starting_position,
                                     valid_position);
     // place sorted_lms to the beginning of SA

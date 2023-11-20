@@ -661,6 +661,8 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
   // epilogue
   auto sw3 = spdlog::stopwatch{};
   get_overall_rank<size_type>(sa_dup, rank, is_head);
+  sa = std::ranges::subrange(std::begin(sa_dup),
+                             std::begin(sa_dup) + (sa.size()));
   get_overall_sa<size_type>(sa, rank);
   SPDLOG_DEBUG("epilogue elapsed {}", sw3);
 }
