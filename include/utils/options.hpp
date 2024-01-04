@@ -63,9 +63,7 @@ auto [generic_options_cmdline, generic_positional] = []{ // {{{
 auto suffix_sort_options = []{ // {{{
   namespace bpo = boost::program_options;
   auto suffix_sort_options = bpo::options_description{
-    "kISS suffix_sort [--option ...] <FASTA/text filename>\n"
-    "\tFor FASTA files, the filename should end with .fasta/.fa;\n"
-    "\totherwise, it's treated as text.\n\n"
+    "\n./kISS suffix_sort [--option ...] <FASTA/text filename>\n\n"
     "Options"
   };
   suffix_sort_options.add_options()
@@ -99,19 +97,10 @@ auto [suffix_sort_options_cmdline, suffix_sort_positional] = []{ // {{{
 auto fmindex_build_options = []{ // {{{
   namespace bpo = boost::program_options;
   auto fmindex_build_options = bpo::options_description{
-    "kISS fmindex_build [--option ...] <FASTA/text filename>\n"
-    "\tFor FASTA files, the filename should end with .fasta/.fa;\n"
-    "\totherwise, it's treated as text.\n\n"
+    "\n./kISS fmindex_build [--option ...] <FASTA/text filename>\n\n"
     "Options"
   };
   fmindex_build_options.add_options()
-  (
-    "sa_sample_rate",
-    bpo::value<size_t>()
-      ->value_name("NUM")
-      ->default_value(4),
-    "Controls the frequency of data point sampling during suffix array construction, balancing between accuracy and resource efficiency."
-  )
   (
     ",k",
     bpo::value<size_t>()
@@ -141,9 +130,7 @@ auto [fmindex_build_options_cmdline, fmindex_build_positional] = []{ // {{{
 auto fmindex_query_options = []{ // {{{
   namespace bpo = boost::program_options;
   auto fmindex_query_options = bpo::options_description{
-    "kISS fmindex_query [--option ...] <FASTA/text filename>\n"
-    "\tFor FASTA files, the filename should end with .fasta/.fa;\n"
-    "\totherwise, it's treated as text.\n\n"
+    "./kISS fmindex_query [--option ...] <FASTA/text filename>\n\n"
     "Options"
   };
   fmindex_query_options.add_options()
