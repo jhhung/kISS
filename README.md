@@ -18,17 +18,16 @@ Clone the kISS repository and navigate to the build directory, and generate buil
 ```
 git clone --recurse-submodules https://github.com/jhhung/kISS
 cd kISS
-mdkir build
-cd build
-cmake ..
-make -j
+cmake -B build
+
+cd build && cmake .. && make && cd -
 ```
 
 ## Usage Examples
 ### Help message
 To view available options and commands, execute:
 ```
-$ ./kISS -h
+$ ./build/kISS -h
  _     ___  ____  ____
 | | __|_ _|/ ___|/ ___|
 | |/ / | | \___ \\___ \
