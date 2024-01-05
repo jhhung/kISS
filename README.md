@@ -7,7 +7,6 @@ To use kISS, ensure the following components are available:
 - GNU g++ version 11 or later
 - cmake version 3.18.0 or higher
 - boost version 1.74.0 or higher
-- [Biovoltron](https://github.com/JHHLAB/Biovoltron)
 
 ## Installation Steps
 Begin by installing necessary dependencies:
@@ -44,56 +43,46 @@ Generic options:
   -t [ --num_threads ] NUM (=128)  number of thread
   --verbose                        print more information
 
-kISS suffix_sort [--option ...] <FASTA/text filename>
-	For FASTA files, the filename should end with .fasta/.fa;
-	otherwise, it's treated as text.
+
+./kISS suffix_sort [--option ...] <FASTA filename>
 
 Options:
-  -k NUM (=256)                    a k-ordered value, where each suffix is
+  -k NUM (=256)                    a k-ordered value, where each suffix is 
                                    sorted based on the first k characters.
                                    Using -1 indicates unbounded sorting.
 
-kISS fmindex_build [--option ...] <FASTA/text filename>
-	For FASTA files, the filename should end with .fasta/.fa;
-	otherwise, it's treated as text.
+
+./kISS fmindex_build [--option ...] <FASTA filename>
 
 Options:
-  --sa_sample_rate NUM (=4)        Controls the frequency of data point
-                                   sampling during suffix array construction,
-                                   balancing between accuracy and resource
-                                   efficiency.
-  -k NUM (=256)                    Sets the maximum query length for the
-                                   fmindex search as k - sa_sample_rate; using
+  -k NUM (=256)                    Sets the maximum query length for the 
+                                   fmindex search as k - sa_sample_rate; using 
                                    -1 indicates an unlimited query length.
 
-kISS fmindex_query [--option ...] <FASTA/text filename>
-	For FASTA files, the filename should end with .fasta/.fa;
-	otherwise, it's treated as text.
+./kISS fmindex_query [--option ...] <FASTA filename>
 
 Options:
   -q STR                           Content of the query string.
-  -f STR                           File containing multiple query string
-                                   contents, with each query string separated
-                                   by a newline.
 ```
 ### k-ordered suffix array sorter
 Sorts suffixes within a file using 256-ordered suffix sorting under 24 threads:
 ```
-./kISS suffix_sort -k 256 -t 24 data/example.fa
+$ ./build/kISS suffix_sort example/drosophia_chr1_2.fa -k 256 -t 24
+[2024-01-05 12:34:21.897] [stderr] [info] [suffix_sort.hpp:34] k = 256, suffix sorting elapsed 0.973169849
 ```
 
 ### k-ordered fmindex
-Constructs a k-ordered FMindex for example.fasta with specific parameters:
+Constructs a k-ordered FMindex for example/drosophia_chr1_2.fa with specific parameters:
 ```
-./kISS fmindex_build \
-    genome.fasta \
-    --sa_sample_rate 4 \
-    -k 256 \
-    -t 128
+# Build FMIndex
+$ ./build/kISS fmindex_build example/drosophia_chr1_2.fa -k 256 -t 24
 
 # Query examples
-./kISS fmindex_query example.fa -q GCTAGCTCTAG
-./kISS fmindex_query example.fa -f example.query
+$ ./build/kISS fmindex_query example/drosophia_chr1_2.fa -q GCTAGCTCTAG
+[2024-01-05 12:19:25.271] [stderr] [info] [fmindex_query.hpp:36] query = GCTAGCTCTAG found 6 times
+
+$ ./build/kISS fmindex_query example/drosophia_chr1_2.fa -q TGCTTAGCTAG
+[2024-01-05 12:33:30.963] [stderr] [info] [fmindex_query.hpp:36] query = TGCTTAGCTAG found 11 times
 ```
 
 ## Citation

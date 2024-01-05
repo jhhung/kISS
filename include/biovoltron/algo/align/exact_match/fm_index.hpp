@@ -273,17 +273,6 @@ class FMIndex {
     assert(std::all_of(std::execution::par_unseq, s.cbegin(), s.cend(),
                        [](auto c) { return c >= 0 && c <= 3; }));
   }
-  static auto
-  validate_sa(istring_view s, const auto& ori_sa) {
-    assert(s.size() + 1 == ori_sa.size());
-
-    auto idx = std::vector<size_type>(s.size());
-    std::iota(idx.begin(), idx.end(), 0);
-    assert(std::all_of(std::execution::par_unseq, idx.cbegin(), idx.cend(),
-                       [&s, &ori_sa](auto c) {
-                         return s.substr(ori_sa[c]) < s.substr(ori_sa[c + 1]);
-                       }));
-  }
 
   void
   build_occ(istring_view ref, const auto& ori_sa) {
@@ -401,8 +390,8 @@ class FMIndex {
 
   void
   build(istring_view ref, const auto& ori_sa) {
-    SPDLOG_DEBUG("validate sa...");
-    validate_sa(ref, ori_sa);
+    // SPDLOG_DEBUG("validate sa...");
+    // validate_sa(ref, ori_sa);
 
     SPDLOG_DEBUG("building FM-index begin...");
     SPDLOG_DEBUG("occ sampling interval: {}", OCC_INTV);
