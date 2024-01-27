@@ -37,31 +37,38 @@ $ ./build/kISS -h
 kISS [--generic-option ...] cmd [--cmd-specific-option ...]:
 
 Generic options:
-  -h [ --help ]                    produce help message
-  -v [ --version ]                 print version string
-  -t [ --num_threads ] NUM (=128)  number of thread
-  --verbose                        print more information
+  -h [ --help ]                         produce help message
+  -v [ --version ]                      print version string
+  -t [ --num_threads ] NUM (=128)       number of thread
+  --verbose                             print more information
 
 
 ./kISS suffix_sort [--option ...] <FASTA filename>
 
 Options:
-  -k NUM (=256)                    a k-ordered value, where each suffix is 
-                                   sorted based on the first k characters.
-                                   Using -1 indicates unbounded sorting.
+  -k [ --kordered ] NUM (=256)          a k-ordered value, where each suffix is
+                                        sorted based on the first k characters.
+                                        Using -1 indicates unbounded sorting.
+  -s [ --sorting-algorithm ] ALGO (=PARALLEL_SORTING)
+                                        The sorting strategy for the step 
+                                        "Parallel k-ordered Sorting of LMS 
+                                        Suffixes" in the kISS pipeline.
+                                        Valid arguments are PARALLEL_SORTING 
+                                        and PREFIX_DOUBLING.
 
 
 ./kISS fmindex_build [--option ...] <FASTA filename>
 
 Options:
-  -k NUM (=256)                    Sets the maximum query length for the 
-                                   fmindex search as k - sa_sample_rate; using 
-                                   -1 indicates an unlimited query length.
+  -k [ --kordered ] NUM (=256)          Sets the maximum query length for the 
+                                        fmindex search as k - sa_sample_rate; 
+                                        using -1 indicates an unlimited query 
+                                        length.
 
 ./kISS fmindex_query [--option ...] <FASTA filename>
 
 Options:
-  -q STR                           Content of the query string.
+  -q [ --query ] STR                    Content of the query string.
 ```
 ### k-ordered suffix array sorter
 Sorts suffixes within a file using 256-ordered suffix sorting under 24 threads:
