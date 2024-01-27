@@ -7,6 +7,7 @@
 #define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
 
 #include "constant.hpp"
+#include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
 
 #include "spdlog/spdlog.h"
@@ -60,6 +61,22 @@ auto [generic_options_cmdline, generic_positional] = []{ // {{{
   return std::tuple{generic_options_cmdline, generic_positional};
 }(); // }}}
 
+std::istream& operator>> (std::istream &in, SortingAlgorithm &algorithm)
+{
+    std::string token;
+    in >> token;
+    boost::to_upper(token);
+    if (token == "PARALLEL_SORTING") {
+        algorithm = SortingAlgorithm::PARALLEL_SORTING;
+    } else if (token == "PREFIX_DOUBLING") {
+        algorithm = SortingAlgorithm::PREFIX_DOUBLING;
+    } else {
+        throw boost::program_options::validation_error(
+          boost::program_options::validation_error::invalid_option_value);
+    }
+    return in;
+}
+
 auto suffix_sort_options = []{ // {{{
   namespace bpo = boost::program_options;
   auto suffix_sort_options = bpo::options_description{
@@ -74,6 +91,15 @@ auto suffix_sort_options = []{ // {{{
       ->default_value(256),
     "a k-ordered value, where each suffix is sorted based on the first k characters.\n"
     "Using -1 indicates unbounded sorting."
+  )
+  (
+    "sorting-algorithm,s",
+    bpo::value<kISS::SortingAlgorithm>()
+      ->value_name("ALGO")
+      ->default_value(kISS::SortingAlgorithm::PARALLEL_SORTING, "PARALLEL_SORTING"),
+    "The sorting strategy for the step \"Parallel k-ordered Sorting of LMS Suffixes\" "
+    "in the kISS pipeline.\n"
+    "Valid arguments are PARALLEL_SORTING and PREFIX_DOUBLING."
   );
   return suffix_sort_options;
 }(); // }}}

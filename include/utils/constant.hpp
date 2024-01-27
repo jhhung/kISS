@@ -13,4 +13,10 @@ const auto BANNER = std::string{R"( _     ___  ____  ____
 |   <  | |  ___) |___) |
 |_|\_\|___||____/|____/ )" + VERSION + '\n'};
 
+enum SortingAlgorithm
+{
+  PARALLEL_SORTING,
+  PREFIX_DOUBLING
+};
+
 }
