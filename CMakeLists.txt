@@ -26,9 +26,12 @@ find_package(OpenMP 4.5 REQUIRED)
 # Include spdlog
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/submodules/spdlog)
 
+# Add definiton
+add_definitions(-mavx -mavx2 -mlzcnt)
+
 # Link your source code to your project
 add_executable(kISS src/main.cpp)
-target_compile_options(kISS PRIVATE -fopenmp -Ofast -g3)
+target_compile_options(kISS PRIVATE -fopenmp -Ofast)
 
 target_link_libraries(kISS PRIVATE ${TBB_IMPORTED_TARGETS})
 target_link_libraries(kISS PRIVATE OpenMP::OpenMP_CXX)
@@ -36,3 +39,6 @@ target_link_libraries(kISS PRIVATE Threads::Threads)
 target_link_libraries(kISS PRIVATE spdlog)
 target_link_libraries(kISS LINK_PUBLIC ${Boost_LIBRARIES} )
 target_include_directories(kISS PRIVATE ${PROJECT_SOURCE_DIR}/include)
+
+include(CTest)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests)

@@ -45,57 +45,59 @@ struct KPsaisSorter {
     sw = spdlog::stopwatch{};
     auto n1 = psais::num_lms<size_type>(T);
     SA.reserve(n + 1);
-    SA.resize(n1 + 1, psais::EMPTY<size_type>);
+    SA.resize(2 * (n1 + 1), psais::EMPTY<size_type>);
 
     // 3. place lms index
-    auto buf = std::ranges::subrange(std::begin(SA) + 1, std::end(SA));
-    psais::put_lms_suffix_left_shift<size_type>(T, buf);
-    SA[0] = n;
+    auto buf_SA = std::ranges::subrange(std::begin(SA) + (n1 + 2), std::end(SA));
+    psais::put_lms_suffix_left_shift<size_type>(T, buf_SA);
+    SA[n1 + 1] = n;
+    buf_SA = std::ranges::subrange(std::begin(SA) + (n1 + 1), std::end(SA));
     SPDLOG_DEBUG("GetLMSPositions elapsed {}", sw);
 
     // 4. sort lms suffix in sort_len order
-    auto reverse_bits = [](uint16_t x) {
-      x = ((x >> 1) & 0x5555) | ((x & 0x5555) << 1);
-      x = ((x >> 2) & 0x3333) | ((x & 0x3333) << 2);
-      x = ((x >> 4) & 0x0f0f) | ((x & 0x0f0f) << 4);
-      x = ((x >> 8) & 0x00ff) | ((x & 0x00ff) << 8);
-      return x;
-    };
-    std::vector<uint16_t> reverse_bits_table;
-    for (int i = 0; i < (1 << 16); i++)
-      reverse_bits_table.emplace_back(reverse_bits(i));
     sw = spdlog::stopwatch{};
-    std::stable_sort(
-      std::execution::par_unseq, std::begin(SA), std::end(SA),
-      [&ref, sort_len, n, &reverse_bits_table](size_type i, size_type j) {
-        //  return ref.substr(i, sort_len) < ref.substr(j, sort_len);
-        auto tmp = size_type{};
-        for (; tmp + 16 <= sort_len && i + 16 <= n && j + 16 <= n;
-             tmp += 16, i += 16, j += 16) {
-          __m128i a
-            = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&ref[i]));
-          __m128i b
-            = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&ref[j]));
-          const uint16_t less = _mm_movemask_epi8(_mm_cmplt_epi8(a, b));
-          const uint16_t greater = _mm_movemask_epi8(_mm_cmpgt_epi8(a, b));
-          if (less || greater) {
-            return reverse_bits_table[less] > reverse_bits_table[greater];
-          }
-        }
-        for (; tmp + 1 <= sort_len && i < n && j < n; tmp++, i++, j++) {
-          if (ref[i] < ref[j])
-            return true;
-          if (ref[i] > ref[j])
-            return false;
-        }
-        if (tmp >= sort_len) {
-          return i < j;
-        }
-        if (i == n)
-          return true;
-        else
-          return false;
-      });
+    auto output_SA = std::ranges::subrange(std::begin(SA), std::begin(SA) + (n1 + 1));
+    const auto prefix_size = 10;
+    psais::parallel_k_ordered_sort<size_type>(ref, buf_SA, output_SA, sort_len, prefix_size);
+    // auto reverse_packed = psais::get_reverse_packed<size_type>(ref);
+    // std::stable_sort(std::execution::par_unseq,
+    //   std::begin(SA), std::end(SA),
+    //   [&ref, sort_len, n, &reverse_packed](size_type i, size_type j) {
+    //     const auto stride = 125;
+    //     auto sorted_len = size_type{};
+    //     for (; sorted_len + stride <= sort_len && i + stride <= n && j + stride <= n;
+    //          sorted_len += stride, i += stride, j += stride) {
+    //       auto a = psais::load_125<size_type>(reverse_packed, n, i);
+    //       auto b = psais::load_125<size_type>(reverse_packed, n, j);
+    //       auto eq = _mm256_cmpeq_epi8(a, b);
+    //       auto neq_mask = ~((uint32_t)_mm256_movemask_epi8(eq));
+
+    //       if (neq_mask != 0) {
+    //         auto msb_mask = (1UL << (31 - _lzcnt_u32(neq_mask)));
+    //         auto gt = _mm256_max_epu8(a, b);
+    //         gt = _mm256_cmpeq_epi8(gt, a);
+    //         auto gt_mask = (uint32_t)_mm256_movemask_epi8(gt);
+    //         if ((msb_mask & gt_mask) > 0) {
+    //             return false;
+    //         } else {
+    //           return true;
+    //         }
+    //       }
+    //     }
+    //     for (; sorted_len + 1 <= sort_len && i < n && j < n; sorted_len++, i++, j++) {
+    //       if (ref[i] < ref[j])
+    //         return true;
+    //       if (ref[i] > ref[j])
+    //         return false;
+    //     }
+    //     if (sorted_len >= sort_len) {
+    //       return i < j;
+    //     }
+    //     if (i == n)
+    //       return true;
+    //     else
+    //       return false;
+      // });
     SPDLOG_DEBUG("parallelkOrderedLMSSuffixSort elapsed {}", sw);
     // 5. get bucket
     sw = spdlog::stopwatch{};
@@ -105,6 +107,12 @@ struct KPsaisSorter {
     // 6. induce SA
     sw = spdlog::stopwatch{};
     SA.resize(n + 1, psais::EMPTY<size_type>);
+    // set the rest of SA to default value
+    auto remain_len = (n - n1);
+#pragma omp parallel for num_threads(std::thread::hardware_concurrency())
+    for (auto i = size_type{}; i < remain_len; i++) {
+      SA[i + (n1 + 1)] = psais::EMPTY<size_type>;
+    }
     auto ref1 = std::ranges::subrange(std::end(SA) - n1, std::end(SA));
     auto SA1 = std::ranges::subrange(std::begin(SA), std::begin(SA) + n1 + 1);
     psais::put_lms_suffix_right_shift<size_type>(ref, T, BA, ref1, SA, SA1);
