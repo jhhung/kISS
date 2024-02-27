@@ -1,3 +1,6 @@
+// SPDLOG LOGGER
+#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
+
 #include "command/suffix_sort.hpp"
 #include "command/fmindex_build.hpp"
 #include "command/fmindex_query.hpp"

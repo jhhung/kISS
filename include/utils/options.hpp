@@ -3,9 +3,6 @@
 // for TBB deprecated warning
 #define TBB_SUPPRESS_DEPRECATED_MESSAGES 1
 
-// SPDLOG LOGGER
-#define SPDLOG_ACTIVE_LEVEL SPDLOG_LEVEL_DEBUG
-
 #include "constant.hpp"
 #include <boost/algorithm/string.hpp>
 #include <boost/program_options.hpp>
