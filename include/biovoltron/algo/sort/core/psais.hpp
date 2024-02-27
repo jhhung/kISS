@@ -2,6 +2,7 @@
 
 #include "omp.h"
 
+#include <immintrin.h>
 #include <biovoltron/container/xbit_vector.hpp>
 #include <biovoltron/utility/thread_pool.hpp>
 #include <biovoltron/utility/istring.hpp>
@@ -59,6 +60,84 @@ namespace psais {
     auto L = counts * block_idx + std::min(block_idx, remain);
     auto R = L + counts + (block_idx < remain);
     return std::tuple{std::min(num_items, L * 8), std::min(num_items, R * 8)};
+  }
+
+// https://github.com/Daniel-Liu-c0deb0t/simple-saca
+  auto get_reverse_packed_block_range(auto num_items, auto num_blocks, auto block_idx) {
+    auto block_size = (num_items / num_blocks) & (-256);
+    auto block_start = block_size * block_idx;
+    auto block_end = (block_idx == num_items - 1 ? num_items : block_start + block_size);
+    return std::tuple{block_start, block_end};
+  }
+
+  // get reverse packed in SACA algorithm
+  template <typename size_type>  
+  auto get_reverse_packed(const std::ranges::random_access_range auto &ref) {
+    auto n = ref.size();
+    auto reverse_packed = biovoltron::DibitVector(n);
+  #pragma omp parallel for num_threads(NUM_THREADS)
+    for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
+      auto [L, R] = get_reverse_packed_block_range(n, NUM_THREADS, tid);
+      if (L == R)
+        continue;
+
+      for (auto i = L; i < R; i++) {
+        reverse_packed[i] = ref[n - 1 - i];
+      }
+    }
+    return reverse_packed;
+  }
+
+  template <typename size_type>
+  auto
+  load_125(const std::ranges::random_access_range auto &reverse_packed, size_type idx) {
+    idx = reverse_packed.size() - idx - 128;
+    auto i = (idx + 3) / 4 * 4;
+    auto j = (idx + 3) % 4;
+    auto val = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&reverse_packed[i]));
+
+    // shift left by bits
+    auto left_shift = _mm256_set1_epi64x(((3 - j) * 2));
+    auto hi = _mm256_sllv_epi64(val, left_shift);
+    auto right_shift = _mm256_set1_epi64x(((32 - (3 - j)) * 2));
+    auto lo = _mm256_srlv_epi64(_mm256_permute4x64_epi64(val, 0b10010011), right_shift);
+
+    auto mask = _mm256_set_epi8(
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      -1,
+      0b11000000
+    );
+
+   return _mm256_and_si256(_mm256_or_si256(hi, lo), mask);
   }
 
   template <typename size_type>
