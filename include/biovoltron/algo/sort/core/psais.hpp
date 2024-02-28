@@ -15,6 +15,7 @@
 #include <vector>
 #include <thread>
 #include <future>
+#include <iostream>
 
 namespace biovoltron {
 
@@ -750,6 +751,13 @@ namespace psais {
     return std::tuple{n1, K1};
   }
 
+  auto get_block_range(auto num_items, auto num_blocks, auto block_idx) {
+    auto block_size = (num_items / num_blocks) & (-64);
+    auto block_start = block_size * block_idx;
+    auto block_end = (block_idx == num_blocks - 1 ? num_items : block_start + block_size);
+    return std::tuple{block_start, block_end};
+  }
+
   template <typename size_type>
   void
   put_lms_suffix_left_shift(const auto& T,
@@ -757,19 +765,36 @@ namespace psais {
     auto n = (size_type)T.size();
     auto len = std::vector<size_type>(NUM_THREADS, 0);
 #pragma omp parallel for num_threads(NUM_THREADS)
-    for (auto i = size_type{}; i < n; i++) {
-      if (is_LMS(T, i)) {
-        auto tid = omp_get_thread_num();
-        len[tid]++;
+    for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
+      auto [L, R] = get_block_range(n, NUM_THREADS, tid);
+      auto local_len = size_type{};
+      size_type i = L;
+      for (; i + 63 < R; i += 64) {
+        auto bitstring64_i = *(reinterpret_cast<const uint64_t*>(T.data() + (i / 8)));
+        uint64_t type_i1 = (i > 0 ? T[i - 1] : 1);
+        auto bitstring64_i1 = (bitstring64_i << 1) | (type_i1);
+        auto bitstring_lms_count = _mm_popcnt_u64(bitstring64_i & (~bitstring64_i1));
+        local_len += bitstring_lms_count;
       }
+      for (; i < R; i++) {
+        if (is_LMS(T, i)) {
+          local_len++;
+        }
+      }
+      // for (auto i = L; i < R; i++)
+      //   if (is_LMS(T, i))
+      //     local_len++;
+      len[tid] = local_len;
     }
 
     std::exclusive_scan(len.begin(), len.end(), len.begin(), (size_type)0);
 #pragma omp parallel for num_threads(NUM_THREADS)
-    for (auto i = size_type{}; i < n; i++) {
-      if (is_LMS(T, i)) {
-        auto tid = omp_get_thread_num();
-        S1[len[tid]++] = i;
+    for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
+      auto [L, R] = get_block_range(n, NUM_THREADS, tid);
+      auto local_len = len[tid];
+      for (auto i = L; i < R; i++) {
+        if (is_LMS(T, i))
+          S1[local_len++] = i;
       }
     }
   }

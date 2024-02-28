@@ -31,7 +31,7 @@ add_definitions(-mavx -mavx2 -mlzcnt)
 
 # Link your source code to your project
 add_executable(kISS src/main.cpp)
-target_compile_options(kISS PRIVATE -fopenmp -Ofast)
+target_compile_options(kISS PRIVATE -fopenmp -Ofast -g)
 
 target_link_libraries(kISS PRIVATE ${TBB_IMPORTED_TARGETS})
 target_link_libraries(kISS PRIVATE OpenMP::OpenMP_CXX)
