@@ -36,3 +36,6 @@ target_link_libraries(kISS PRIVATE Threads::Threads)
 target_link_libraries(kISS PRIVATE spdlog)
 target_link_libraries(kISS LINK_PUBLIC ${Boost_LIBRARIES} )
 target_include_directories(kISS PRIVATE ${PROJECT_SOURCE_DIR}/include)
+
+include(CTest)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests)
