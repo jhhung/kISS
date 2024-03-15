@@ -16,6 +16,7 @@
 #include <numeric>
 #include <tuple>
 #include <vector>
+#include <xmmintrin.h>
 
 #include "omp.h"
 
@@ -27,6 +28,7 @@ namespace kiss {
 #define NUM_THREADS std::thread::hardware_concurrency()
 #define PREFIX_DOUBLING_NUM_THREADS(n) \
   std::min((uint32_t)NUM_THREADS, (uint32_t)n)
+#define LARGE_SEGMENT_THRESHOLD (1 << 14)
 
 enum SUFFIX_TYPE { L_TYPE = 0, S_TYPE = 1 };
 enum BLOCK_ELEM_TYPE { NONHEAD = 0, HEAD = 1 };
@@ -137,54 +139,87 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
   starting_position[n2] = n;
 }
 
-// Stable sorting the indicies in elems_i by the consecutive 16-bits in member
-// indicated by right_shift_offset. Output the result to elems_o.
 template<typename size_type>
-void
-initialize_sa_radix_sort_16_bits(auto& elems_i, auto& elems_o, auto&& member,
-                                 auto right_shift_offset) {
-  auto offsets = std::vector(NUM_THREADS, std::vector(1 << 16, size_type{}));
-
-// calculate count for each mask of each thread
-#pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto i = size_type{}; i < elems_i.size(); i++) {
-    auto tid = omp_get_thread_num();
-    auto& elem = elems_i[i];
-    offsets[tid][(member[elem] >> right_shift_offset) & MASK]++;
-  }
-  // Calculate offset for each mask of each thread
-  // FIXME: dirty fix to make NUM_THREADS constant
-  auto total = std::vector<size_type>(1 << 16, 0);
-  const size_type num_threads = NUM_THREADS;
-  for (auto i = 0; i < (1 << 16); i++) {
-    auto& x = total[i];
-    for (auto tid = 0; tid < num_threads; tid++) {
-      x += offsets[tid][i];
-      offsets[tid][i] = x - offsets[tid][i];
-    }
-  }
-  std::exclusive_scan(total.begin(), total.end(), total.begin(), size_type{},
-                      std::plus<>{});
-#pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto tid = 0; tid < NUM_THREADS; tid++) {
-    for (auto i = 0; i < (1 << 16); i++) offsets[tid][i] += total[i];
-  }
-// Place back the elements
-#pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto i = size_type{}; i < elems_i.size(); i++) {
-    auto tid = omp_get_thread_num();
-    auto& elem = elems_i[i];
-    auto idx = offsets[tid][(member[elem] >> right_shift_offset) & MASK]++;
-    elems_o[idx] = elem;
-  }
+auto
+get_key(const std::ranges::random_access_range auto& arr, size_type idx,
+        size_type index_offset) {
+  return ((uint64_t)idx + index_offset >= arr.size()) ?
+           size_type{} :
+           arr[idx + index_offset];
 }
 
-// Stable sorting the indicies in arr by member. Output the result to buf.
 template<typename size_type>
 void
-initialize_sa_radix_sort(auto& arr, auto& buf, auto&& member) {
-  initialize_sa_radix_sort_16_bits<size_type>(arr, buf, member, 0);
-  initialize_sa_radix_sort_16_bits<size_type>(buf, arr, member, 16);
+sort_range(std::ranges::random_access_range auto& arr,
+           std::ranges::random_access_range auto& buf,
+           auto&& member, size_type bits, size_type index_offset,
+           size_type num_threads) {
+  if (bits & 0xF) {
+    throw std::invalid_argument("Invalid bits argument");
+    return;
+  }
+  if (arr.size() != buf.size()) {
+    throw std::invalid_argument("arr and buf size mismatch");
+    return;
+  }
+
+  auto n = (size_type)arr.size();
+
+  if (n <= LARGE_SEGMENT_THRESHOLD) {
+    size_type bitmask = (size_type{1} << bits) - 1;
+    auto comparator = [&member, index_offset, bitmask](size_type i, size_type j) {
+      return (get_key(member, i, index_offset) & bitmask) 
+           < (get_key(member, j, index_offset) & bitmask);
+    };
+    std::sort(std::begin(arr), std::end(arr), comparator);
+    return;
+  }
+
+  auto passes = bits / 16;
+
+  for (auto k = size_type{}; k < passes; k++) {
+    auto counts = std::vector(num_threads, std::vector((1 << 16) + 64, size_type{}));
+    auto offsets = counts;
+
+#pragma omp parallel for num_threads(num_threads)
+    for (auto tid = size_type{}; tid < num_threads; tid++) {
+      auto [L, R] = get_type_block_range(n, num_threads, tid); // TODO: to be fixed to match version in 183
+      for (auto i = L; i < R; i++) {
+        auto key = get_key(member, arr[i], index_offset);
+        counts[tid][(key >> (k * 16) & (0xFFFF))]++;
+      }
+    }
+
+    // Calculate offset for each mask of each thread
+    for (auto tid = size_type{}; tid < num_threads; tid++) {
+      auto [L, R] = get_type_block_range(n, num_threads, tid);
+      std::exclusive_scan(std::begin(counts[tid]), std::end(counts[tid]), std::begin(offsets[tid]), 
+                      size_type{L}, std::plus<>{});
+    }
+
+    // Place back the elements
+#pragma omp parallel for num_threads(num_threads)
+    for (auto tid = size_type{}; tid < num_threads; tid++) {
+      auto [L, R] = get_type_block_range(n, num_threads, tid); // TODO: to be fixed to match version in 183
+      for (auto i = L; i < R; i++) {
+        auto key = get_key(member, arr[i], index_offset);
+        auto idx = offsets[tid][(key >> (k * 16) & (0xFFFF))]++;
+        buf[idx] = arr[i];
+      }
+    }
+
+    std::vector<size_type> added(num_threads);
+
+    auto ptr = size_type{};
+    for (auto i = 0; i < (1 << 16); i++) {
+      for (auto tid = size_type{}; tid < num_threads; tid++) {
+        auto [L, R] = get_type_block_range(n, num_threads, tid);
+        memmove(arr.data() + ptr, buf.data() + L + added[tid], counts[tid][i] * 4);
+        added[tid] += counts[tid][i];
+        ptr += counts[tid][i];
+      }
+    }
+  }
 }
 
 // Perform 1-sort on sa.
@@ -198,8 +233,8 @@ initialize_sa(const std::ranges::random_access_range auto& sa,
   for (auto i = size_type{}; i < n2; i++) { sa[i] = i; }
   std::swap(sa[n2 - 1], sa[0]);  // to make sure that the sentinel would be
                                  // the first
-  // perform rafix sort based on key rank[i]
-  initialize_sa_radix_sort<size_type>(sa, buf, rank);
+  // perform radix sort based on key rank[i]
+  sort_range<size_type>(sa, buf, rank, sizeof(size_type) * 8, 0, NUM_THREADS);
 }
 
 // Calculate the inverse suffix array.
@@ -255,15 +290,6 @@ initialize_rank(const std::ranges::random_access_range auto& sa,
   auto new_rank = std::ranges::subrange(std::begin(buf), std::begin(buf) + n2);
   buf = rank;
   rank = new_rank;
-}
-
-template<typename size_type>
-auto
-get_key(const std::ranges::random_access_range auto& rank, size_type idx,
-        size_type index_offset) {
-  return ((uint64_t)idx + index_offset >= rank.size()) ?
-           size_type{} :
-           rank[idx + index_offset];
 }
 
 // Radix sort on range [L, R] in sa by consecutive 16 bits of key, indicated by
@@ -383,7 +409,7 @@ merge_sa_blocks_recursive(
       return get_key(rank, idx1, index_offset)
              < get_key(rank, idx2, index_offset);
     };
-    std::merge(std::execution::par, std::begin(sa) + l_last_segment_head,
+    std::merge(std::begin(sa) + l_last_segment_head,
                std::begin(sa) + mid_block_start,
                std::begin(sa) + mid_block_start,
                std::begin(sa) + r_first_segment_end,
@@ -648,10 +674,12 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
   auto sw1 = spdlog::stopwatch{};
   auto n2 = (size_type)sa.size();
   initialize_sa<size_type>(sa, rank, buf);
+  SPDLOG_DEBUG("preparing 1 elapsed {}", sw1);
+  sw1 = spdlog::stopwatch{};
   // This Boolean array is used for easier implementation.
   auto is_head = TypeVector(n2, BLOCK_ELEM_TYPE::NONHEAD);
   initialize_rank<size_type>(sa, rank, buf, is_head);
-  SPDLOG_DEBUG("preparing elapsed {}", sw1);
+  SPDLOG_DEBUG("preparing 2 elapsed {}", sw1);
   auto sa_dup = sa;
   for (uint64_t i = 1; i < sort_len; i *= 2) {
     h_sort<size_type>(sa_dup, rank, buf, is_head, i);
