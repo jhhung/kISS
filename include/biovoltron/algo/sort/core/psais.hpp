@@ -77,15 +77,22 @@ namespace psais {
   template <typename size_type>  
   auto get_reverse_packed(const std::ranges::random_access_range auto &ref) {
     auto n = ref.size();
-    auto reverse_packed = biovoltron::DibitVector(n + 16);
+    auto n_padded = (n + 16 + 3) / 4 * 4;
+    auto reverse_packed = biovoltron::DibitVector(n_padded);
   #pragma omp parallel for num_threads(NUM_THREADS)
     for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
       auto [L, R] = get_reverse_packed_block_range(n, NUM_THREADS, tid);
       if (L == R)
         continue;
 
-      for (auto i = L; i < R; i++) {
-        reverse_packed[(n + 16) - i - 1] = ref[i];
+      auto block_ptr = reverse_packed.data() + ((n_padded - L - 1) / 4);
+      auto i = L;
+      for (; i < R; i += 4, block_ptr--) {
+        *block_ptr = (ref[i] << 6) | (ref[i + 1] << 4) | (ref[i + 2] << 2) | (ref[i + 3]);
+      }
+      while (i < R) {
+        reverse_packed[n_padded - i - 1] = ref[i];
+        i++;
       }
     }
     return reverse_packed;
@@ -94,7 +101,8 @@ namespace psais {
   template <typename size_type>
   auto
   load_125(const std::ranges::random_access_range auto &reverse_packed, size_type n, size_type idx) {
-    idx = (n + 16) - idx - 128;
+    auto n_padded = (n + 16 + 3) / 4 * 4;
+    idx = n_padded - idx - 128;
     auto i = (idx + 3) / 4;
     auto j = (idx + 3) % 4;
     auto val = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(reverse_packed.data() + i));
@@ -146,7 +154,8 @@ namespace psais {
   template <typename size_type>
   auto
   load_prefix(const std::ranges::random_access_range auto &reverse_packed, size_type n, size_type idx, size_type prefix_size) {
-   idx = (n + 16) - idx - 16;
+   auto n_padded = (n + 16 + 3) / 4 * 4;
+   idx = n_padded - idx - 16;
    auto i = (idx + 3) / 4;
    auto j = (idx + 3) % 4;
    auto val = *(reinterpret_cast<const uint32_t*>(reverse_packed.data() + i));
@@ -160,8 +169,12 @@ namespace psais {
                           std::ranges::random_access_range auto & SA,
                           size_type sort_len, size_type prefix_size) { //...
     auto n = ref.size();
-    auto reverse_packed = psais::get_reverse_packed<size_type>(ref);
 
+    auto sw = spdlog::stopwatch{};
+    auto reverse_packed = psais::get_reverse_packed<size_type>(ref);
+    SPDLOG_DEBUG("Reverse packed {}", sw);
+
+    sw = spdlog::stopwatch{};
     const auto num_segments = size_type{1} << (2 * prefix_size);
     std::vector<std::vector<size_type>> segment_start_thread(NUM_THREADS, 
       std::vector<size_type>(num_segments));
@@ -173,6 +186,8 @@ namespace psais {
       segment_start_thread[thread_num][prefix]++;
     }
     const size_type num_threads = NUM_THREADS;
+
+#pragma omp parallel for num_threads(NUM_THREADS)
     for (auto i = size_type{}; i < num_segments; i++) {
       size_type current_accumulated = size_type{};
       for (auto j = size_type{}; j < num_threads; j++) {
@@ -184,16 +199,16 @@ namespace psais {
     std::exclusive_scan(std::begin(segment_start), std::end(segment_start),
       std::begin(segment_start), size_type{});
     segment_start.emplace_back(buf_SA.size());
-    for (auto i = size_type{}; i < num_segments; i++)
-      for (auto j = size_type{}; j < num_threads; j++) {
-        segment_start_thread[j][i] += segment_start[i];
-      }
 #pragma omp parallel for num_threads(NUM_THREADS)
     for (auto i = size_type{}; i < buf_SA.size(); i++) {
       auto prefix = load_prefix<size_type>(reverse_packed, n, buf_SA[i], prefix_size);
       auto thread_num = omp_get_thread_num();
-      SA[segment_start_thread[thread_num][prefix]++] = buf_SA[i];
+      auto idx = segment_start[prefix] + (segment_start_thread[thread_num][prefix]++);
+      SA[idx] = buf_SA[i];
     }
+     SPDLOG_DEBUG("Put suffixes {}", sw);
+
+    sw = spdlog::stopwatch{};
     auto cmp_function = [&ref, sort_len, n, &reverse_packed](size_type i, size_type j) {
         const auto stride = 125;
         auto sorted_len = size_type{};
@@ -209,32 +224,24 @@ namespace psais {
             auto gt = _mm256_max_epu8(a, b);
             gt = _mm256_cmpeq_epi8(gt, a);
             auto gt_mask = (uint32_t)_mm256_movemask_epi8(gt);
-            if ((msb_mask & gt_mask) > 0) {
-                return false;
-            } else {
-              return true;
-            }
+            return !((msb_mask & gt_mask) > 0);
           }
         }
         for (; sorted_len + 1 <= sort_len && i < n && j < n; sorted_len++, i++, j++) {
-          if (ref[i] < ref[j])
-            return true;
-          if (ref[i] > ref[j])
-            return false;
+          if (ref[i] != ref[j])
+            return (ref[i] < ref[j]);
         }
         if (sorted_len >= sort_len) {
           return i < j;
         }
-        if (i == n)
-          return true;
-        else
-          return false;
+        return (i == n);
       };
 #pragma omp parallel for schedule(dynamic) num_threads(NUM_THREADS) 
     for (auto i = size_type{}; i < num_segments; i++) {
       std::sort(std::begin(SA) + segment_start[i], 
         std::begin(SA) + segment_start[i + 1], cmp_function);
     }
+    SPDLOG_DEBUG("Parallel sort {}", sw);
   }
 
   template <typename size_type>
