@@ -178,47 +178,41 @@ sort_range(std::ranges::random_access_range auto& arr,
   auto passes = bits / 16;
 
   for (auto k = size_type{}; k < passes; k++) {
-    auto counts = std::vector(num_threads, std::vector((1 << 16) + 64, size_type{}));
-    auto offsets = counts;
-
+      auto offsets = std::vector(num_threads, std::vector(1 << 16, size_type{}));
+      auto right_shift_offset = k * 16;
+    // calculate count for each mask of each thread
 #pragma omp parallel for num_threads(num_threads)
-    for (auto tid = size_type{}; tid < num_threads; tid++) {
-      auto [L, R] = get_type_block_range(n, num_threads, tid); // TODO: to be fixed to match version in 183
-      for (auto i = L; i < R; i++) {
-        auto key = get_key(member, arr[i], index_offset);
-        counts[tid][(key >> (k * 16) & (0xFFFF))]++;
-      }
+    for (auto i = size_type{}; i < arr.size(); i++) {
+      auto tid = omp_get_thread_num();
+      auto& elem = ((k & 1) ? buf[i] : arr[i]);
+      auto key = (member[elem] >> right_shift_offset) & (0xFFFF);
+      offsets[tid][key]++;
     }
-
     // Calculate offset for each mask of each thread
-    for (auto tid = size_type{}; tid < num_threads; tid++) {
-      auto [L, R] = get_type_block_range(n, num_threads, tid);
-      std::exclusive_scan(std::begin(counts[tid]), std::end(counts[tid]), std::begin(offsets[tid]), 
-                      size_type{L}, std::plus<>{});
-    }
-
-    // Place back the elements
+    auto total = std::vector<size_type>(1 << 16, 0);
 #pragma omp parallel for num_threads(num_threads)
-    for (auto tid = size_type{}; tid < num_threads; tid++) {
-      auto [L, R] = get_type_block_range(n, num_threads, tid); // TODO: to be fixed to match version in 183
-      for (auto i = L; i < R; i++) {
-        auto key = get_key(member, arr[i], index_offset);
-        auto idx = offsets[tid][(key >> (k * 16) & (0xFFFF))]++;
-        buf[idx] = arr[i];
-      }
-    }
-
-    std::vector<size_type> added(num_threads);
-
-    auto ptr = size_type{};
     for (auto i = 0; i < (1 << 16); i++) {
-      for (auto tid = size_type{}; tid < num_threads; tid++) {
-        auto [L, R] = get_type_block_range(n, num_threads, tid);
-        memmove(arr.data() + ptr, buf.data() + L + added[tid], counts[tid][i] * 4);
-        added[tid] += counts[tid][i];
-        ptr += counts[tid][i];
+      auto& x = total[i];
+      for (auto tid = 0; tid < num_threads; tid++) {
+        x += offsets[tid][i];
+        offsets[tid][i] = x - offsets[tid][i];
       }
     }
+    std::exclusive_scan(total.begin(), total.end(), total.begin(), size_type{},
+                        std::plus<>{});
+    // Place back the elements
+  #pragma omp parallel for num_threads(num_threads)
+    for (auto i = size_type{}; i < arr.size(); i++) {
+      auto tid = omp_get_thread_num();
+      auto& elem = ((k & 1) ? buf[i] : arr[i]);
+      auto key = (member[elem] >> right_shift_offset) & (0xFFFF);
+      auto idx = total[key] + (offsets[tid][key]++);
+      auto& output_addr = ((k & 1) ? arr[idx] : buf[idx]);
+      output_addr = elem;
+    }
+  }
+  if (passes & 1) {
+    std::memmove(arr.data(), buf.data(), (uint64_t)n * sizeof(size_type));
   }
 }
 
