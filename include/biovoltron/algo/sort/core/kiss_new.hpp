@@ -246,13 +246,16 @@ initialize_rank(const std::ranges::random_access_range auto& sa,
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n2, NUM_THREADS, tid);
     auto local_block_last_head = L;
+    auto local_block_accumulated_length = size_type{};
     bool local_block_has_head = false;
     for (auto i = L; i < R; i++) {
-      if (i == 0 || rank[sa[i]] != rank[sa[i - 1]] || sa[i - 1] == n2 - 1) {
-        is_head[i] = BLOCK_ELEM_TYPE::HEAD;
-        local_block_has_head = true;
-        local_block_last_head = i + 1;
-      }
+      size_type is_head_i = (i == 0 || sa[i - 1] == n2 - 1 || rank[sa[i]] != rank[sa[i - 1]]);
+      is_head[i] = is_head_i;
+      local_block_has_head = (local_block_has_head || is_head_i);
+      local_block_accumulated_length += 1;
+      local_block_last_head += local_block_accumulated_length & (-is_head_i);
+      buf[sa[i]] = local_block_last_head;
+      local_block_accumulated_length &= (~(-is_head_i));
     }
 #pragma omp critical
     {
@@ -271,13 +274,10 @@ initialize_rank(const std::ranges::random_access_range auto& sa,
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n2, NUM_THREADS, tid);
     auto local_block_last_head = (tid > 0 ? block_last_head[tid - 1] : 0);
-    for (auto i = L; i < R; i++) {
-      if (is_head[i]) {
-        buf[sa[i]] = i + 1;
-        local_block_last_head = i + 1;
-      } else {
-        buf[sa[i]] = local_block_last_head;
-      }
+    auto i = L;
+    while (i < R && !is_head[i]) {
+      buf[sa[i]] = local_block_last_head;
+      ++i;
     }
   }
   // extra swap
