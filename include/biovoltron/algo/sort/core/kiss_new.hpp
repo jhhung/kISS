@@ -286,31 +286,6 @@ initialize_rank(const std::ranges::random_access_range auto& sa,
   rank = new_rank;
 }
 
-// Radix sort on range [L, R] in sa by consecutive 16 bits of key, indicated by
-// bit_offset.
-template<typename size_type>
-void
-sort_sa_same_first_value_16_bits(
-  const std::ranges::random_access_range auto& sa,
-  const std::ranges::random_access_range auto& rank,
-  const std::ranges::random_access_range auto& buf, size_type index_offset,
-  size_type L, size_type R, int bit_offset) {
-  std::vector<size_type> start((1 << 16) + 1);
-  for (auto i = L; i < R; i++) {
-    size_type key = get_key(rank, sa[i], index_offset);
-    size_type cur_index = (key >> bit_offset) & MASK;
-    start[cur_index + 1]++;
-  }
-  std::inclusive_scan(std::begin(start), std::end(start), std::begin(start));
-  for (auto i = L; i < R; i++) {
-    size_type key = get_key(rank, sa[i], index_offset);
-    size_type cur_index = (key >> bit_offset) & MASK;
-    buf[L + start[cur_index]] = sa[i];
-    start[cur_index]++;
-  }
-  std::swap_ranges(std::begin(sa) + L, std::begin(sa) + R, std::begin(buf) + L);
-}
-
 // Radix sort on range [L, R] in sa by key.
 template<typename size_type>
 void
@@ -318,15 +293,10 @@ sort_sa_same_first_value(const std::ranges::random_access_range auto& sa,
                          const std::ranges::random_access_range auto& rank,
                          const std::ranges::random_access_range auto& buf,
                          size_type index_offset, size_type L, size_type R) {
-  if (R - L <= (1 << 10)) {  // threshold can be adjusted
-    auto comparator = [&rank, index_offset](size_type i, size_type j) {
-      return get_key(rank, i, index_offset) < get_key(rank, j, index_offset);
-    };
-    std::stable_sort(std::begin(sa) + L, std::begin(sa) + R, comparator);
-  } else {
-    sort_sa_same_first_value_16_bits(sa, rank, buf, index_offset, L, R, 0);
-    sort_sa_same_first_value_16_bits(sa, rank, buf, index_offset, L, R, 16);
-  }
+  auto comparator = [&rank, index_offset](size_type i, size_type j) {
+    return get_key(rank, i, index_offset) < get_key(rank, j, index_offset);
+  };
+  std::sort(std::begin(sa) + L, std::begin(sa) + R, comparator);
 }
 
 // Sort each segment in the same block.
