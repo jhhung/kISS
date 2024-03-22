@@ -246,16 +246,11 @@ initialize_rank(const std::ranges::random_access_range auto& sa,
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n2, NUM_THREADS, tid);
     auto local_block_last_head = L;
-    auto local_block_accumulated_length = size_type{};
     bool local_block_has_head = false;
     for (auto i = L; i < R; i++) {
-      size_type is_head_i = (i == 0 || sa[i - 1] == n2 - 1 || rank[sa[i]] != rank[sa[i - 1]]);
-      is_head[i] = is_head_i;
-      local_block_has_head = (local_block_has_head || is_head_i);
-      local_block_accumulated_length += 1;
-      local_block_last_head += local_block_accumulated_length & (-is_head_i);
-      buf[sa[i]] = local_block_last_head;
-      local_block_accumulated_length &= (~(-is_head_i));
+      is_head[i] = (i == 0 || rank[sa[i]] != rank[sa[i - 1]] || sa[i - 1] == n2 - 1);
+      local_block_has_head |= is_head[i];
+      local_block_last_head = (is_head[i] ? i + 1 : local_block_last_head);
     }
 #pragma omp critical
     {
@@ -274,10 +269,9 @@ initialize_rank(const std::ranges::random_access_range auto& sa,
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n2, NUM_THREADS, tid);
     auto local_block_last_head = (tid > 0 ? block_last_head[tid - 1] : 0);
-    auto i = L;
-    while (i < R && !is_head[i]) {
+    for (auto i = L; i < R; i++) {
+      local_block_last_head = (is_head[i] ? i + 1 : local_block_last_head);
       buf[sa[i]] = local_block_last_head;
-      ++i;
     }
   }
   // extra swap
@@ -444,13 +438,13 @@ calculate_new_rank_head(const std::ranges::random_access_range auto& sa,
     int local_level = 0;
     for (auto i = L; i < R; i++) {
       if (is_head[i]) {
-        local_level = 2;
+        local_level |= 2;
         local_head_tag = rank[sa[i]];
         local_head_sa_index = i;
       } else if (get_key<size_type>(rank, sa[i], index_offset)
                  != get_key<size_type>(rank, sa[i - 1], index_offset)) {
         is_new_head[i] = 1;
-        local_level = std::max(local_level, 1);
+        local_level |= 1;
         local_head_tag = (i - local_head_sa_index) + local_head_tag;
         local_head_sa_index = i;
       }

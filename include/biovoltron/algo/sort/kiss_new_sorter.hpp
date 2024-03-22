@@ -62,6 +62,7 @@ struct KissNewSorter {
     // size_type
     sw = spdlog::stopwatch{};
     // Consecutive l-mers will be encoded into one integer.
+    auto sw2 = spdlog::stopwatch{};
     size_type l = 8 * sizeof(size_type) / std::bit_width(K - 1);
     // The length of the encoded string is precalculated to estimate memory
     // usage precisely.
@@ -79,6 +80,7 @@ struct KissNewSorter {
     auto valid_position = psais::TypeVector(n2, 0);
     kiss::encode_reference<size_type>(ref, lms, rank, buf, starting_position,
                                      valid_position, K, l);
+    SPDLOG_DEBUG("Encode reference elapsed {}", sw2);
 
     // 5. prefix doubling & place back
     // prefix doubling
