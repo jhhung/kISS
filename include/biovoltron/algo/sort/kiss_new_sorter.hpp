@@ -48,7 +48,11 @@ struct KissNewSorter {
     // 2. prepare lms array
     sw = spdlog::stopwatch{};
     auto n1 = psais::num_lms<size_type>(T);
+
+    auto sw3 = spdlog::stopwatch{};
+    SA.reserve(n + 1);
     SA.resize(n1 + 1, psais::EMPTY<size_type>);
+    SPDLOG_DEBUG("First reserve & resize {}", sw3);
 
     // 3. place lms index
     auto lms_without_sentinel
@@ -67,7 +71,11 @@ struct KissNewSorter {
     // The length of the encoded string is precalculated to estimate memory
     // usage precisely.
     auto n2 = kiss::get_encoded_reference_length<size_type>(SA, l);
-    SA.resize(std::max(n2 * 4 + 2, n + 1));
+    SPDLOG_DEBUG("Calculate encode length {}", sw2);
+    sw2 = spdlog::stopwatch{};
+    SA.resize(std::max(n2 * 3 + 1, n + 1));
+    SPDLOG_DEBUG("Resize {}", sw2);
+    sw2 = spdlog::stopwatch{};
     // Identify the range for lms (LMS), rank (Inverse suffix array), buf
     // (buffer), stating_position and valid_position
     auto lms = std::ranges::subrange(std::begin(SA), std::begin(SA) + (n1 + 1));
@@ -75,10 +83,10 @@ struct KissNewSorter {
                                       std::begin(SA) + (n2 * 2 + 1));
     auto buf = std::ranges::subrange(std::begin(SA) + (n2 * 2 + 1),
                                      std::begin(SA) + (n2 * 2 + 1) + n1);
-    auto starting_position = std::ranges::subrange(
-      std::begin(SA) + (n2 * 3 + 1), std::begin(SA) + (n2 * 4 + 2));
+    // auto starting_position = std::ranges::subrange(
+    //   std::begin(SA) + (n2 * 3 + 1), std::begin(SA) + (n2 * 4 + 2));
     auto valid_position = psais::TypeVector(n2, 0);
-    kiss::encode_reference<size_type>(ref, lms, rank, buf, starting_position,
+    kiss::encode_reference<size_type>(ref, lms, rank, buf,
                                      valid_position, K, l);
     SPDLOG_DEBUG("Encode reference elapsed {}", sw2);
 
@@ -89,12 +97,17 @@ struct KissNewSorter {
     buf = std::ranges::subrange(std::begin(SA) + 1, std::begin(SA) + (n2 + 1));
     kiss::prefix_doubling(sa, rank, buf, sort_len);
     // place back
+    sw2 = spdlog::stopwatch{};
     auto sorted_lms = buf;
-    kiss::place_back_lms<size_type>(sa, sorted_lms, starting_position,
-                                    valid_position);
+    psais::put_lms_suffix_left_shift<size_type>(T, rank);
+    // rank[n1] = n;
+    lms = rank;
+    kiss::place_back_lms<size_type>(sa, sorted_lms, lms,
+                                    valid_position, l, n1 + 1, n);
+    SPDLOG_DEBUG("Place back LMS {}", sw2);
     // place sorted_lms to the beginning of SA
     if (std::begin(sorted_lms) - (std::begin(SA) + 1))
-      std::copy(std::execution::par, std::begin(sorted_lms),
+      std::copy(std::begin(sorted_lms),
                 std::begin(sorted_lms) + n1, std::begin(SA) + 1);
     SA[0] = n;
     SPDLOG_DEBUG("parallelkOrderedLMSSuffixSort elapsed {}", sw);

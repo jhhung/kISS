@@ -64,15 +64,16 @@ auto
 get_encoded_reference_length(const auto& lms, size_type l) {
   auto n1 = (size_type)lms.size();
   auto length = size_type{};
+  auto l_bits = std::bit_width(l - 1);
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
     auto local_length_count = size_type{};
     for (auto i = L; i + 1 < R; i++) {
-      local_length_count += (lms[i + 1] - lms[i] + l - 1) / l;
+      local_length_count += (lms[i + 1] - lms[i] + l - 1) >> l_bits;
     }
     if (L != R && R < n1)
-      local_length_count += (lms[R] - lms[R - 1] + l - 1) / l;
+      local_length_count += (lms[R] - lms[R - 1] + l - 1) >> l_bits;
 #pragma omp atomic
     length += local_length_count;
   }
@@ -85,12 +86,13 @@ template<typename size_type>
 void
 encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
                  auto& cS, const std::ranges::random_access_range auto& buf,
-                 const std::ranges::random_access_range auto& starting_position,
+                //  const std::ranges::random_access_range auto& starting_position,
                  std::ranges::random_access_range auto& valid_position,
                  size_type K, size_type l) {
   auto n = (size_type)S.size();
   auto n1 = (size_type)lms.size();
   auto n2 = (size_type)cS.size();
+  auto l_bits = std::bit_width(l - 1);
   std::vector<size_type> block_cS_start_index(NUM_THREADS);
   // Find the starting index of cS for each thread
 #pragma omp parallel for num_threads(NUM_THREADS)
@@ -99,10 +101,10 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
     auto local_block_cS_start_index = size_type{};
     for (auto i = L; i + 1 < R; i++) {
       if (i + 1 < n1)
-        local_block_cS_start_index += (lms[i + 1] - lms[i] + l - 1) / l;
+        local_block_cS_start_index += (lms[i + 1] - lms[i] + l - 1) >> l_bits;
     }
     if (L != R && R < n1)
-      local_block_cS_start_index += (lms[R] - lms[R - 1] + l - 1) / l;
+      local_block_cS_start_index += (lms[R] - lms[R - 1] + l - 1) >> l_bits;
 #pragma omp critical
     block_cS_start_index[tid] = local_block_cS_start_index;
   }
@@ -118,7 +120,7 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
     for (auto i = L; i < R; i++) {
       if (i + 1 >= n1)
         continue;
-      auto encoded_LMS_substring_length = (lms[i + 1] - lms[i] + l - 1) / l;
+      auto encoded_LMS_substring_length = (lms[i + 1] - lms[i] + l - 1) >> l_bits;
       auto l_border = lms[i];
       auto r_border = l_border + l;
       for (auto j = 0; j < encoded_LMS_substring_length; j++) {
@@ -128,7 +130,7 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
           encoded = (encoded << bits_for_character) | character;
         }
         cS[local_cS_index] = encoded;
-        starting_position[local_cS_index] = l_border;
+        // starting_position[local_cS_index] = l_border;
         valid_position[local_cS_index] = (j == 0);
         l_border += l;
         r_border += l;
@@ -136,7 +138,7 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
       }
     }
   }
-  starting_position[n2] = n;
+  // starting_position[n2] = n;
 }
 
 template<typename size_type>
@@ -647,19 +649,71 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
   // epilogue
   auto sw3 = spdlog::stopwatch{};
   get_overall_rank<size_type>(sa_dup, rank, is_head);
+  sw3 = spdlog::stopwatch{};
+  SPDLOG_DEBUG("epilogue 1 elapsed {}", sw3);
+  sw3 = spdlog::stopwatch{};
   sa = std::ranges::subrange(std::begin(sa_dup),
                              std::begin(sa_dup) + (sa.size()));
   get_overall_sa<size_type>(sa, rank);
-  SPDLOG_DEBUG("epilogue elapsed {}", sw3);
+  SPDLOG_DEBUG("epilogue 2 elapsed {}", sw3);
 }
 
 template<typename size_type>
 void
 place_back_lms(const std::ranges::random_access_range auto& sa,
                std::ranges::random_access_range auto& sorted_lms,
-               const std::ranges::random_access_range auto& starting_position,
-               const std::ranges::random_access_range auto& valid_position) {
+                std::ranges::random_access_range auto& lms,
+               const std::ranges::random_access_range auto& valid_position,
+               size_type l, size_type n1, size_type n) {
   auto n2 = (size_type)sa.size();
+  auto l_bits = std::bit_width(l - 1);
+  std::vector<size_type> block_cS_start_index(NUM_THREADS + 1);
+  // Find the starting index of cS for each thread
+#pragma omp parallel for num_threads(NUM_THREADS)
+  for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
+    auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
+    auto local_block_cS_start_index = size_type{};
+    for (auto i = L; i + 1 < R; i++) {
+      if (i + 1 < n1) {
+        auto lms_i_1 = (i + 2 == n1 ? n : lms[i + 1]);
+        local_block_cS_start_index += (lms_i_1 - lms[i] + l - 1) >> l_bits;
+      }
+    }
+    if (L != R && R < n1)
+      local_block_cS_start_index += (lms[R] - lms[R - 1] + l - 1) >> l_bits;
+#pragma omp critical
+    block_cS_start_index[tid] = local_block_cS_start_index;
+  }
+  // Exclusive scan
+  std::exclusive_scan(block_cS_start_index.begin(), block_cS_start_index.end(),
+                      block_cS_start_index.begin(), size_type{}, std::plus<>{});
+  // Fill in the encoded value
+#pragma omp parallel for num_threads(NUM_THREADS)
+  for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
+    auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
+    auto local_cS_index = block_cS_start_index[tid];
+    for (auto i = L; i < R; i++) {
+      if (i + 1 >= n1)
+        continue;
+      auto lms_i_1 = (i + 2 == n1 ? n : lms[i + 1]);
+      auto encoded_LMS_substring_length = (lms_i_1 - lms[i] + l - 1) >> l_bits;
+      auto l_border = lms[i];
+      for (auto j = 0; j < encoded_LMS_substring_length; j++) {
+        // auto encoded = size_type{};
+        // for (auto k = l_border; k < r_border; k++) {
+        //   auto character = (k < n ? S[k] : 0);
+        //   encoded = (encoded << bits_for_character) | character;
+        // }
+        // cS[local_cS_index] = encoded;
+        sorted_lms[local_cS_index] = l_border;
+        // valid_position[local_cS_index] = (j == 0);
+        l_border += l;
+        // r_border += l;
+        local_cS_index++;
+      }
+    }
+  }
+  // sorted_lms[n2] = n;
   // scan sa to put them in correct order
   std::vector<size_type> count_sorted_lms(NUM_THREADS);
 #pragma omp parallel for num_threads(NUM_THREADS)
@@ -682,9 +736,12 @@ place_back_lms(const std::ranges::random_access_range auto& sa,
       = (tid ? count_sorted_lms[tid - 1] : size_type{});
     for (auto i = L; i < R; i++) {
       if (valid_position[sa[i]])
-        sorted_lms[local_count_sorted_lms++] = starting_position[sa[i]];
+        lms[local_count_sorted_lms++] = sorted_lms[sa[i]];
     }
   }
+  auto tmp_buf = sorted_lms;
+  sorted_lms = lms;
+  lms = tmp_buf;
 }
 #undef MASK
 #undef NUM_THREADS
