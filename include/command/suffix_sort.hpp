@@ -5,7 +5,7 @@
 #include <boost/program_options.hpp>
 #include <biovoltron/file_io/fasta.hpp>
 #include <biovoltron/utility/istring.hpp>
-#include <biovoltron/algo/sort/kpsais_sorter.hpp>
+#include <biovoltron/algo/sort/kiss1_sorter.hpp>
 #include <biovoltron/algo/sort/kiss_new_sorter.hpp>
 #include <fstream>
 #include <ranges>
@@ -31,10 +31,10 @@ void suffix_sort_main(
 
   auto k = command_vm["kordered"].as<size_t>();
   auto sw = spdlog::stopwatch{};
-  std::variant<biovoltron::KPsaisSorter<uint32_t>, biovoltron::KissNewSorter<uint32_t>> sorter;
+  std::variant<biovoltron::KISS1Sorter<uint32_t>, biovoltron::KissNewSorter<uint32_t>> sorter;
   switch(command_vm["sorting-algorithm"].as<kISS::SortingAlgorithm>()) {
     case kISS::SortingAlgorithm::PARALLEL_SORTING:
-      sorter = biovoltron::KPsaisSorter<uint32_t>{};
+      sorter = biovoltron::KISS1Sorter<uint32_t>{};
       break;
     case kISS::SortingAlgorithm::PREFIX_DOUBLING:
       sorter = biovoltron::KissNewSorter<uint32_t>{};

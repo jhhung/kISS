@@ -3,6 +3,7 @@
 #include <exception>
 #include <boost/program_options.hpp>
 #include <biovoltron/algo/align/exact_match/fm_index.hpp>
+#include <biovoltron/algo/sort/kpsais_sorter.hpp>
 
 namespace bpo = boost::program_options;
 
