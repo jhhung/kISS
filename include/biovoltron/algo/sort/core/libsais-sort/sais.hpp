@@ -1,16 +1,38 @@
 #pragma once
 
-#include "structs.hpp"
 #include "utils.hpp"
-#include "helper.hpp"
 
-#include <omp.h>
 #include <execution>
-#include <iostream>
 #include <span>
 #include <thread>
 
 namespace sais {
+
+template <typename size_type>
+auto get_S_bucket(
+  const std::array<size_type, CHAR_SIZE> &count
+) {
+  auto bucket = count;
+  std::inclusive_scan(
+    bucket.begin(), bucket.end(),
+    bucket.begin(),
+    std::plus<>(), size_type{1}
+  );
+  return bucket;
+}
+
+template <typename size_type>
+auto get_L_bucket(
+  const std::array<size_type, CHAR_SIZE> &count
+) {
+  auto bucket = count;
+  std::exclusive_scan(
+    bucket.begin(), bucket.end(),
+    bucket.begin(),
+    size_type{1}
+  );
+  return bucket;
+}
 
 template <typename char_type, typename size_type>
 void induced_S_block(
@@ -128,7 +150,7 @@ void induced_S_block(
   size_type block_end,
   vector<ThreadState<size_type>> &states
 ) {
-  size_t num_threads = states.size();
+  auto num_threads = states.size();
   auto block_len = block_beg - block_end;
 
 #pragma omp parallel num_threads(num_threads)
@@ -171,13 +193,10 @@ void induced_S(
   vector<ThreadState<size_type>> &states,
   const std::array<size_type, CHAR_SIZE> &count
 ) {
-  auto bucket = count;
-  for (auto c = 1; c < CHAR_SIZE; c++)
-    bucket[c] += bucket[c - 1];
+  auto n = S.size();
+  auto num_threads = states.size();
 
-  size_type n = S.size();
-  size_t num_threads = states.size();
-
+  auto bucket = get_S_bucket(count);
   for (auto block_beg = n; block_beg > 0;) {
     if (SA[block_beg] == EMPTY<size_type>) {
       block_beg--;
@@ -192,9 +211,9 @@ void induced_S(
 
     auto block_len = block_beg - block_end;
     if (block_len < 32) {
-      induced_S_block(S, SA, bucket, block_beg, block_end);
+      induced_S_block<char_type, size_type>(S, SA, bucket, block_beg, block_end);
     } else {
-      induced_S_block(S, SA, bucket, block_beg, block_end, states);
+      induced_S_block<char_type, size_type>(S, SA, bucket, block_beg, block_end, states);
     }
 
     block_beg = block_end;
@@ -345,7 +364,6 @@ void induced_L_block(
     // udpate
     induced_L_block_update(S, SA, state);
   }
-
 }
 
 template <typename char_type, typename size_type>
@@ -355,13 +373,10 @@ void induced_L(
   vector<ThreadState<size_type>> &states,
   const std::array<size_type, CHAR_SIZE> &count
 ) {
+  auto n = S.size();
+  auto num_threads = states.size();
 
-  auto bucket = count;
-  std::exclusive_scan(bucket.begin(), bucket.end(), bucket.begin(), 0);
-
-  size_type n = S.size();
-  size_t num_threads = states.size();
-
+  auto bucket = get_L_bucket(count);;
   for (auto block_beg = size_type{}; block_beg < n;) {
     if (SA[block_beg] == EMPTY<size_type>) {
       block_beg++;
@@ -376,9 +391,9 @@ void induced_L(
 
     auto block_len = block_end - block_beg;
     if (block_len < 32)
-      induced_L_block(S, SA, bucket, block_beg, block_end);
+      induced_L_block<char_type, size_type>(S, SA, bucket, block_beg, block_end);
     else
-      induced_L_block(S, SA, bucket, block_beg, block_end, states);
+      induced_L_block<char_type, size_type>(S, SA, bucket, block_beg, block_end, states);
 
     block_beg = block_end;
   }
@@ -390,10 +405,7 @@ void induced_clear(
   const std::array<size_type, CHAR_SIZE> &count,
   const std::array<size_type, CHAR_SIZE> &lms_count
 ) {
-  auto bucket = count;
-  for (auto i = 1; i < CHAR_SIZE; i++)
-    bucket[i] += bucket[i - 1];
-
+  auto bucket = get_S_bucket(count);
   for (auto i = 0; i < CHAR_SIZE; i++) {
     auto beg = bucket[i] - lms_count[i];
     auto end = bucket[i];
@@ -411,7 +423,7 @@ void induced_sort(
   vector<ThreadState<size_type>> &states
 ) {
   auto num_threads = states.size();
-  auto     count = std::array<size_type, CHAR_SIZE>{1};
+  auto     count = std::array<size_type, CHAR_SIZE>{};
   auto lms_count = std::array<size_type, CHAR_SIZE>{};
   for (auto tid = size_t{}; tid < num_threads; tid++) {
     auto &bucket = states[tid].bucket;
@@ -421,9 +433,20 @@ void induced_sort(
     }
   }
 
+  auto bg = std::chrono::high_resolution_clock::now();
   induced_L(S, SA, states, count);
+  auto ed = std::chrono::high_resolution_clock::now();
+  std::cout << "induced_L: " << (ed - bg).count() / 1e9 << '\n';
+
+  bg = std::chrono::high_resolution_clock::now();
   induced_clear(SA, count, lms_count);
+  ed = std::chrono::high_resolution_clock::now();
+  std::cout << "induced_clear: " << (ed - bg).count() / 1e9 << '\n';
+
+  bg = std::chrono::high_resolution_clock::now();
   induced_S(S, SA, states, count);
+  ed = std::chrono::high_resolution_clock::now();
+  std::cout << "induced_S: " << (ed - bg).count() / 1e9 << '\n';
 }
 
 
@@ -435,7 +458,7 @@ void put_lms_suffix(
   vector<ThreadState<size_type>> &states
 ) {
   auto num_threads = states.size();
-  auto     count = std::array<size_type, CHAR_SIZE>{1};
+  auto     count = std::array<size_type, CHAR_SIZE>{};
   auto lms_count = std::array<size_type, CHAR_SIZE>{};
   for (auto tid = size_t{}; tid < num_threads; tid++) {
     auto &bucket = states[tid].bucket;
@@ -445,22 +468,20 @@ void put_lms_suffix(
     }
   }
 
-  for (auto i = 1; i < CHAR_SIZE; i++) {
-        count[i] +=     count[i - 1];
-    lms_count[i] += lms_count[i - 1];
-  }
+  std::inclusive_scan(count.begin(), count.end(), count.begin(), std::plus<>(), size_type{1});
 
   size_type m = SA1.size();
   size_type j = SA.size();
 
-  for (auto c = CHAR_SIZE - 1; c >= 1; c--) {
-    auto num = lms_count[c] - lms_count[c - 1];
+  for (auto c = CHAR_SIZE - 1; ~c; c--) {
+    auto num = lms_count[c];
     if (num == 0)
       continue;
 
     auto i = count[c];
     if (j - i > 0)
       std::fill(SA.begin() + i, SA.begin() + j, EMPTY<size_type>);
+
     std::memmove(&SA[j = (i - num)], &SA1[m -= num], sizeof(size_type) * num);
   }
 
@@ -502,7 +523,7 @@ auto get_lms(
   // -----|---------|
   //     ^     ^
   //    c0     c1
-  auto c0 = S[end - 1], c1 = char_type{};
+  auto c0 = S[end - 1], c1 = EMPTY<char_type>;
   while (ptr < n and c0 == (c1 = S[ptr])) ptr++;
   uint8_t type = ptr == n ? (bool)L_TYPE : c0 < c1;
 
@@ -549,8 +570,8 @@ auto get_lms(
   vector<size_type> &SA,
   vector<ThreadState<size_type>> &states
 ) {
-  size_type n = S.size();
-  size_type num_threads = states.size();
+  auto n = S.size();
+  auto num_threads = states.size();
 
 #pragma omp parallel num_threads(num_threads)
   {
@@ -560,7 +581,7 @@ auto get_lms(
     state.m = get_lms(S, SA, state);
   }
 
-  size_type m = 0;
+  auto m = size_type{};
   for (auto tid = size_t{}; tid < num_threads; tid++) {
     auto &state = states[tid];
 
@@ -578,16 +599,16 @@ auto get_lms(
 }
 
 template <typename char_type, typename size_type>
-void suffix_array(
+void suffix_array_inplace(
   vector<char_type> &S,
   vector<size_type> &SA,
-  size_t sort_len = 256u,
+  size_t sort_len = 256,
   size_t num_threads = std::thread::hardware_concurrency()
 ) {
   if (S.size() == 0)
     return SA = {0}, void();
 
-  size_type n = S.size();
+  auto n = S.size();
   SA.reserve(n + 1);
 
   auto states = vector<ThreadState<size_type>>(num_threads);
@@ -613,7 +634,7 @@ void suffix_array(
   std::cout << "SA.resize(n + 1): " << (ed - bg).count() / 1e9 << '\n';
 
   bg = std::chrono::high_resolution_clock::now();
-  auto SA1 = std::ranges::subrange(SA.begin() + 1, SA.begin() + m);
+  auto SA1 = std::ranges::subrange(SA.begin(), SA.begin() + m);
   put_lms_suffix(S, SA, SA1, states);
   ed = std::chrono::high_resolution_clock::now();
   std::cout << "put_lms_suffix: " << (ed - bg).count() / 1e9 << '\n';
@@ -624,5 +645,46 @@ void suffix_array(
   std::cout << "induced_sort: " << (ed - bg).count() / 1e9 << '\n';
 }
 
+template <typename char_type, typename size_type>
+void suffix_array(
+  vector<char_type> &S,
+  vector<size_type> &SA,
+  size_t sort_len = 256,
+  size_t num_threads = std::thread::hardware_concurrency()
+) {
+  if (S.size() == 0)
+    return SA = {0}, void();
+
+  auto n = S.size();
+  SA.reserve(n + 1);
+
+  auto states = vector<ThreadState<size_type>>(num_threads);
+
+  auto bg = std::chrono::high_resolution_clock::now();
+  SA.resize(n + 1);
+  auto ed = std::chrono::high_resolution_clock::now();
+  std::cout << "SA.resize(n + 1): " << (ed - bg).count() / 1e9 << '\n';
+
+  bg = std::chrono::high_resolution_clock::now();
+  auto m = get_lms(S, SA, states);
+  ed = std::chrono::high_resolution_clock::now();
+  std::cout << "get_lms: " << (ed - bg).count() / 1e9 << '\n';
+
+  bg = std::chrono::high_resolution_clock::now();
+  lms_suffix_sort(S, SA, m, sort_len, num_threads);
+  ed = std::chrono::high_resolution_clock::now();
+  std::cout << "lms_suffix_sort: " << (ed - bg).count() / 1e9 << '\n';
+
+  bg = std::chrono::high_resolution_clock::now();
+  auto SA1 = std::ranges::subrange(SA.begin() + 1, SA.begin() + m);
+  put_lms_suffix(S, SA, SA1, states);
+  ed = std::chrono::high_resolution_clock::now();
+  std::cout << "put_lms_suffix: " << (ed - bg).count() / 1e9 << '\n';
+
+  bg = std::chrono::high_resolution_clock::now();
+  induced_sort(S, SA, states);
+  ed = std::chrono::high_resolution_clock::now();
+  std::cout << "induced_sort: " << (ed - bg).count() / 1e9 << '\n';
+}
 
 }
