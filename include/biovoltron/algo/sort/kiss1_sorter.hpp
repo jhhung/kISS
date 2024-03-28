@@ -1,3 +1,4 @@
+#include <biovoltron/utility/istring.hpp>
 #include <biovoltron/algo/sort/core/libsais-sort/sais.hpp>
 
 namespace biovoltron {
