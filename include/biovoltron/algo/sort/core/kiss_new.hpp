@@ -16,6 +16,7 @@
 #include <numeric>
 #include <tuple>
 #include <vector>
+#include <xmmintrin.h>
 
 #include "omp.h"
 
@@ -27,6 +28,7 @@ namespace kiss {
 #define NUM_THREADS std::thread::hardware_concurrency()
 #define PREFIX_DOUBLING_NUM_THREADS(n) \
   std::min((uint32_t)NUM_THREADS, (uint32_t)n)
+#define LARGE_SEGMENT_THRESHOLD (1 << 14)
 
 enum SUFFIX_TYPE { L_TYPE = 0, S_TYPE = 1 };
 enum BLOCK_ELEM_TYPE { NONHEAD = 0, HEAD = 1 };
@@ -62,15 +64,16 @@ auto
 get_encoded_reference_length(const auto& lms, size_type l) {
   auto n1 = (size_type)lms.size();
   auto length = size_type{};
+  auto l_bits = std::bit_width(l - 1);
 #pragma omp parallel for num_threads(NUM_THREADS)
   for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
     auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
     auto local_length_count = size_type{};
     for (auto i = L; i + 1 < R; i++) {
-      local_length_count += (lms[i + 1] - lms[i] + l - 1) / l;
+      local_length_count += (lms[i + 1] - lms[i] + l - 1) >> l_bits;
     }
     if (L != R && R < n1)
-      local_length_count += (lms[R] - lms[R - 1] + l - 1) / l;
+      local_length_count += (lms[R] - lms[R - 1] + l - 1) >> l_bits;
 #pragma omp atomic
     length += local_length_count;
   }
@@ -83,12 +86,13 @@ template<typename size_type>
 void
 encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
                  auto& cS, const std::ranges::random_access_range auto& buf,
-                 const std::ranges::random_access_range auto& starting_position,
+                //  const std::ranges::random_access_range auto& starting_position,
                  std::ranges::random_access_range auto& valid_position,
                  size_type K, size_type l) {
   auto n = (size_type)S.size();
   auto n1 = (size_type)lms.size();
   auto n2 = (size_type)cS.size();
+  auto l_bits = std::bit_width(l - 1);
   std::vector<size_type> block_cS_start_index(NUM_THREADS);
   // Find the starting index of cS for each thread
 #pragma omp parallel for num_threads(NUM_THREADS)
@@ -97,10 +101,10 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
     auto local_block_cS_start_index = size_type{};
     for (auto i = L; i + 1 < R; i++) {
       if (i + 1 < n1)
-        local_block_cS_start_index += (lms[i + 1] - lms[i] + l - 1) / l;
+        local_block_cS_start_index += (lms[i + 1] - lms[i] + l - 1) >> l_bits;
     }
     if (L != R && R < n1)
-      local_block_cS_start_index += (lms[R] - lms[R - 1] + l - 1) / l;
+      local_block_cS_start_index += (lms[R] - lms[R - 1] + l - 1) >> l_bits;
 #pragma omp critical
     block_cS_start_index[tid] = local_block_cS_start_index;
   }
@@ -116,7 +120,7 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
     for (auto i = L; i < R; i++) {
       if (i + 1 >= n1)
         continue;
-      auto encoded_LMS_substring_length = (lms[i + 1] - lms[i] + l - 1) / l;
+      auto encoded_LMS_substring_length = (lms[i + 1] - lms[i] + l - 1) >> l_bits;
       auto l_border = lms[i];
       auto r_border = l_border + l;
       for (auto j = 0; j < encoded_LMS_substring_length; j++) {
@@ -126,7 +130,7 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
           encoded = (encoded << bits_for_character) | character;
         }
         cS[local_cS_index] = encoded;
-        starting_position[local_cS_index] = l_border;
+        // starting_position[local_cS_index] = l_border;
         valid_position[local_cS_index] = (j == 0);
         l_border += l;
         r_border += l;
@@ -134,57 +138,84 @@ encode_reference(const std::ranges::random_access_range auto& S, auto& lms,
       }
     }
   }
-  starting_position[n2] = n;
+  // starting_position[n2] = n;
 }
 
-// Stable sorting the indicies in elems_i by the consecutive 16-bits in member
-// indicated by right_shift_offset. Output the result to elems_o.
+template<typename size_type>
+auto
+get_key(const std::ranges::random_access_range auto& arr, size_type idx,
+        size_type index_offset) {
+  return ((uint64_t)idx + index_offset >= arr.size()) ?
+           size_type{} :
+           arr[idx + index_offset];
+}
+
 template<typename size_type>
 void
-initialize_sa_radix_sort_16_bits(auto& elems_i, auto& elems_o, auto&& member,
-                                 auto right_shift_offset) {
-  auto offsets = std::vector(NUM_THREADS, std::vector(1 << 16, size_type{}));
-
-// calculate count for each mask of each thread
-#pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto i = size_type{}; i < elems_i.size(); i++) {
-    auto tid = omp_get_thread_num();
-    auto& elem = elems_i[i];
-    offsets[tid][(member[elem] >> right_shift_offset) & MASK]++;
+sort_range(std::ranges::random_access_range auto& arr,
+           std::ranges::random_access_range auto& buf,
+           auto&& member, size_type bits, size_type index_offset,
+           size_type num_threads) {
+  if (bits & 0xF) {
+    throw std::invalid_argument("Invalid bits argument");
+    return;
   }
-  // Calculate offset for each mask of each thread
-  // FIXME: dirty fix to make NUM_THREADS constant
-  auto total = std::vector<size_type>(1 << 16, 0);
-  const size_type num_threads = NUM_THREADS;
-  for (auto i = 0; i < (1 << 16); i++) {
-    auto& x = total[i];
-    for (auto tid = 0; tid < num_threads; tid++) {
-      x += offsets[tid][i];
-      offsets[tid][i] = x - offsets[tid][i];
+  if (arr.size() != buf.size()) {
+    throw std::invalid_argument("arr and buf size mismatch");
+    return;
+  }
+
+  auto n = (size_type)arr.size();
+
+  if (n <= LARGE_SEGMENT_THRESHOLD) {
+    size_type bitmask = (size_type{1} << bits) - 1;
+    auto comparator = [&member, index_offset, bitmask](size_type i, size_type j) {
+      return (get_key(member, i, index_offset) & bitmask) 
+           < (get_key(member, j, index_offset) & bitmask);
+    };
+    std::sort(std::begin(arr), std::end(arr), comparator);
+    return;
+  }
+
+  auto passes = bits / 16;
+
+  for (auto k = size_type{}; k < passes; k++) {
+      auto offsets = std::vector(num_threads, std::vector(1 << 16, size_type{}));
+      auto right_shift_offset = k * 16;
+    // calculate count for each mask of each thread
+#pragma omp parallel for num_threads(num_threads)
+    for (auto i = size_type{}; i < arr.size(); i++) {
+      auto tid = omp_get_thread_num();
+      auto& elem = ((k & 1) ? buf[i] : arr[i]);
+      auto key = (member[elem] >> right_shift_offset) & (0xFFFF);
+      offsets[tid][key]++;
+    }
+    // Calculate offset for each mask of each thread
+    auto total = std::vector<size_type>(1 << 16, 0);
+#pragma omp parallel for num_threads(num_threads)
+    for (auto i = 0; i < (1 << 16); i++) {
+      auto& x = total[i];
+      for (auto tid = 0; tid < num_threads; tid++) {
+        x += offsets[tid][i];
+        offsets[tid][i] = x - offsets[tid][i];
+      }
+    }
+    std::exclusive_scan(total.begin(), total.end(), total.begin(), size_type{},
+                        std::plus<>{});
+    // Place back the elements
+  #pragma omp parallel for num_threads(num_threads)
+    for (auto i = size_type{}; i < arr.size(); i++) {
+      auto tid = omp_get_thread_num();
+      auto& elem = ((k & 1) ? buf[i] : arr[i]);
+      auto key = (member[elem] >> right_shift_offset) & (0xFFFF);
+      auto idx = total[key] + (offsets[tid][key]++);
+      auto& output_addr = ((k & 1) ? arr[idx] : buf[idx]);
+      output_addr = elem;
     }
   }
-  std::exclusive_scan(total.begin(), total.end(), total.begin(), size_type{},
-                      std::plus<>{});
-#pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto tid = 0; tid < NUM_THREADS; tid++) {
-    for (auto i = 0; i < (1 << 16); i++) offsets[tid][i] += total[i];
+  if (passes & 1) {
+    std::memmove(arr.data(), buf.data(), (uint64_t)n * sizeof(size_type));
   }
-// Place back the elements
-#pragma omp parallel for num_threads(NUM_THREADS)
-  for (auto i = size_type{}; i < elems_i.size(); i++) {
-    auto tid = omp_get_thread_num();
-    auto& elem = elems_i[i];
-    auto idx = offsets[tid][(member[elem] >> right_shift_offset) & MASK]++;
-    elems_o[idx] = elem;
-  }
-}
-
-// Stable sorting the indicies in arr by member. Output the result to buf.
-template<typename size_type>
-void
-initialize_sa_radix_sort(auto& arr, auto& buf, auto&& member) {
-  initialize_sa_radix_sort_16_bits<size_type>(arr, buf, member, 0);
-  initialize_sa_radix_sort_16_bits<size_type>(buf, arr, member, 16);
 }
 
 // Perform 1-sort on sa.
@@ -198,8 +229,8 @@ initialize_sa(const std::ranges::random_access_range auto& sa,
   for (auto i = size_type{}; i < n2; i++) { sa[i] = i; }
   std::swap(sa[n2 - 1], sa[0]);  // to make sure that the sentinel would be
                                  // the first
-  // perform rafix sort based on key rank[i]
-  initialize_sa_radix_sort<size_type>(sa, buf, rank);
+  // perform radix sort based on key rank[i]
+  sort_range<size_type>(sa, buf, rank, sizeof(size_type) * 8, 0, NUM_THREADS);
 }
 
 // Calculate the inverse suffix array.
@@ -219,11 +250,9 @@ initialize_rank(const std::ranges::random_access_range auto& sa,
     auto local_block_last_head = L;
     bool local_block_has_head = false;
     for (auto i = L; i < R; i++) {
-      if (i == 0 || rank[sa[i]] != rank[sa[i - 1]] || sa[i - 1] == n2 - 1) {
-        is_head[i] = BLOCK_ELEM_TYPE::HEAD;
-        local_block_has_head = true;
-        local_block_last_head = i + 1;
-      }
+      is_head[i] = (i == 0 || rank[sa[i]] != rank[sa[i - 1]] || sa[i - 1] == n2 - 1);
+      local_block_has_head |= is_head[i];
+      local_block_last_head = (is_head[i] ? i + 1 : local_block_last_head);
     }
 #pragma omp critical
     {
@@ -243,52 +272,14 @@ initialize_rank(const std::ranges::random_access_range auto& sa,
     auto [L, R] = get_type_block_range(n2, NUM_THREADS, tid);
     auto local_block_last_head = (tid > 0 ? block_last_head[tid - 1] : 0);
     for (auto i = L; i < R; i++) {
-      if (is_head[i]) {
-        buf[sa[i]] = i + 1;
-        local_block_last_head = i + 1;
-      } else {
-        buf[sa[i]] = local_block_last_head;
-      }
+      local_block_last_head = (is_head[i] ? i + 1 : local_block_last_head);
+      buf[sa[i]] = local_block_last_head;
     }
   }
   // extra swap
   auto new_rank = std::ranges::subrange(std::begin(buf), std::begin(buf) + n2);
   buf = rank;
   rank = new_rank;
-}
-
-template<typename size_type>
-auto
-get_key(const std::ranges::random_access_range auto& rank, size_type idx,
-        size_type index_offset) {
-  return ((uint64_t)idx + index_offset >= rank.size()) ?
-           size_type{} :
-           rank[idx + index_offset];
-}
-
-// Radix sort on range [L, R] in sa by consecutive 16 bits of key, indicated by
-// bit_offset.
-template<typename size_type>
-void
-sort_sa_same_first_value_16_bits(
-  const std::ranges::random_access_range auto& sa,
-  const std::ranges::random_access_range auto& rank,
-  const std::ranges::random_access_range auto& buf, size_type index_offset,
-  size_type L, size_type R, int bit_offset) {
-  std::vector<size_type> start((1 << 16) + 1);
-  for (auto i = L; i < R; i++) {
-    size_type key = get_key(rank, sa[i], index_offset);
-    size_type cur_index = (key >> bit_offset) & MASK;
-    start[cur_index + 1]++;
-  }
-  std::inclusive_scan(std::begin(start), std::end(start), std::begin(start));
-  for (auto i = L; i < R; i++) {
-    size_type key = get_key(rank, sa[i], index_offset);
-    size_type cur_index = (key >> bit_offset) & MASK;
-    buf[L + start[cur_index]] = sa[i];
-    start[cur_index]++;
-  }
-  std::swap_ranges(std::begin(sa) + L, std::begin(sa) + R, std::begin(buf) + L);
 }
 
 // Radix sort on range [L, R] in sa by key.
@@ -298,15 +289,10 @@ sort_sa_same_first_value(const std::ranges::random_access_range auto& sa,
                          const std::ranges::random_access_range auto& rank,
                          const std::ranges::random_access_range auto& buf,
                          size_type index_offset, size_type L, size_type R) {
-  if (R - L <= (1 << 10)) {  // threshold can be adjusted
-    auto comparator = [&rank, index_offset](size_type i, size_type j) {
-      return get_key(rank, i, index_offset) < get_key(rank, j, index_offset);
-    };
-    std::stable_sort(std::begin(sa) + L, std::begin(sa) + R, comparator);
-  } else {
-    sort_sa_same_first_value_16_bits(sa, rank, buf, index_offset, L, R, 0);
-    sort_sa_same_first_value_16_bits(sa, rank, buf, index_offset, L, R, 16);
-  }
+  auto comparator = [&rank, index_offset](size_type i, size_type j) {
+    return get_key(rank, i, index_offset) < get_key(rank, j, index_offset);
+  };
+  std::sort(std::begin(sa) + L, std::begin(sa) + R, comparator);
 }
 
 // Sort each segment in the same block.
@@ -383,7 +369,7 @@ merge_sa_blocks_recursive(
       return get_key(rank, idx1, index_offset)
              < get_key(rank, idx2, index_offset);
     };
-    std::merge(std::execution::par, std::begin(sa) + l_last_segment_head,
+    std::merge(std::begin(sa) + l_last_segment_head,
                std::begin(sa) + mid_block_start,
                std::begin(sa) + mid_block_start,
                std::begin(sa) + r_first_segment_end,
@@ -454,13 +440,13 @@ calculate_new_rank_head(const std::ranges::random_access_range auto& sa,
     int local_level = 0;
     for (auto i = L; i < R; i++) {
       if (is_head[i]) {
-        local_level = 2;
+        local_level |= 2;
         local_head_tag = rank[sa[i]];
         local_head_sa_index = i;
       } else if (get_key<size_type>(rank, sa[i], index_offset)
                  != get_key<size_type>(rank, sa[i - 1], index_offset)) {
         is_new_head[i] = 1;
-        local_level = std::max(local_level, 1);
+        local_level |= 1;
         local_head_tag = (i - local_head_sa_index) + local_head_tag;
         local_head_sa_index = i;
       }
@@ -648,10 +634,12 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
   auto sw1 = spdlog::stopwatch{};
   auto n2 = (size_type)sa.size();
   initialize_sa<size_type>(sa, rank, buf);
+  SPDLOG_DEBUG("preparing 1 elapsed {}", sw1);
+  sw1 = spdlog::stopwatch{};
   // This Boolean array is used for easier implementation.
   auto is_head = TypeVector(n2, BLOCK_ELEM_TYPE::NONHEAD);
   initialize_rank<size_type>(sa, rank, buf, is_head);
-  SPDLOG_DEBUG("preparing elapsed {}", sw1);
+  SPDLOG_DEBUG("preparing 2 elapsed {}", sw1);
   auto sa_dup = sa;
   for (uint64_t i = 1; i < sort_len; i *= 2) {
     h_sort<size_type>(sa_dup, rank, buf, is_head, i);
@@ -661,19 +649,71 @@ prefix_doubling(std::ranges::random_access_range auto& sa,
   // epilogue
   auto sw3 = spdlog::stopwatch{};
   get_overall_rank<size_type>(sa_dup, rank, is_head);
+  sw3 = spdlog::stopwatch{};
+  SPDLOG_DEBUG("epilogue 1 elapsed {}", sw3);
+  sw3 = spdlog::stopwatch{};
   sa = std::ranges::subrange(std::begin(sa_dup),
                              std::begin(sa_dup) + (sa.size()));
   get_overall_sa<size_type>(sa, rank);
-  SPDLOG_DEBUG("epilogue elapsed {}", sw3);
+  SPDLOG_DEBUG("epilogue 2 elapsed {}", sw3);
 }
 
 template<typename size_type>
 void
 place_back_lms(const std::ranges::random_access_range auto& sa,
                std::ranges::random_access_range auto& sorted_lms,
-               const std::ranges::random_access_range auto& starting_position,
-               const std::ranges::random_access_range auto& valid_position) {
+                std::ranges::random_access_range auto& lms,
+               const std::ranges::random_access_range auto& valid_position,
+               size_type l, size_type n1, size_type n) {
   auto n2 = (size_type)sa.size();
+  auto l_bits = std::bit_width(l - 1);
+  std::vector<size_type> block_cS_start_index(NUM_THREADS + 1);
+  // Find the starting index of cS for each thread
+#pragma omp parallel for num_threads(NUM_THREADS)
+  for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
+    auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
+    auto local_block_cS_start_index = size_type{};
+    for (auto i = L; i + 1 < R; i++) {
+      if (i + 1 < n1) {
+        auto lms_i_1 = (i + 2 == n1 ? n : lms[i + 1]);
+        local_block_cS_start_index += (lms_i_1 - lms[i] + l - 1) >> l_bits;
+      }
+    }
+    if (L != R && R < n1)
+      local_block_cS_start_index += (lms[R] - lms[R - 1] + l - 1) >> l_bits;
+#pragma omp critical
+    block_cS_start_index[tid] = local_block_cS_start_index;
+  }
+  // Exclusive scan
+  std::exclusive_scan(block_cS_start_index.begin(), block_cS_start_index.end(),
+                      block_cS_start_index.begin(), size_type{}, std::plus<>{});
+  // Fill in the encoded value
+#pragma omp parallel for num_threads(NUM_THREADS)
+  for (auto tid = size_type{}; tid < NUM_THREADS; tid++) {
+    auto [L, R] = get_type_block_range(n1, NUM_THREADS, tid);
+    auto local_cS_index = block_cS_start_index[tid];
+    for (auto i = L; i < R; i++) {
+      if (i + 1 >= n1)
+        continue;
+      auto lms_i_1 = (i + 2 == n1 ? n : lms[i + 1]);
+      auto encoded_LMS_substring_length = (lms_i_1 - lms[i] + l - 1) >> l_bits;
+      auto l_border = lms[i];
+      for (auto j = 0; j < encoded_LMS_substring_length; j++) {
+        // auto encoded = size_type{};
+        // for (auto k = l_border; k < r_border; k++) {
+        //   auto character = (k < n ? S[k] : 0);
+        //   encoded = (encoded << bits_for_character) | character;
+        // }
+        // cS[local_cS_index] = encoded;
+        sorted_lms[local_cS_index] = l_border;
+        // valid_position[local_cS_index] = (j == 0);
+        l_border += l;
+        // r_border += l;
+        local_cS_index++;
+      }
+    }
+  }
+  // sorted_lms[n2] = n;
   // scan sa to put them in correct order
   std::vector<size_type> count_sorted_lms(NUM_THREADS);
 #pragma omp parallel for num_threads(NUM_THREADS)
@@ -696,9 +736,12 @@ place_back_lms(const std::ranges::random_access_range auto& sa,
       = (tid ? count_sorted_lms[tid - 1] : size_type{});
     for (auto i = L; i < R; i++) {
       if (valid_position[sa[i]])
-        sorted_lms[local_count_sorted_lms++] = starting_position[sa[i]];
+        lms[local_count_sorted_lms++] = sorted_lms[sa[i]];
     }
   }
+  auto tmp_buf = sorted_lms;
+  sorted_lms = lms;
+  lms = tmp_buf;
 }
 #undef MASK
 #undef NUM_THREADS
