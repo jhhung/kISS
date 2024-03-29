@@ -12,6 +12,9 @@
 #include <algorithm>
 #include <omp.h>
 
+#define prefetchr(address) __builtin_prefetch((const void *)(address), 0, 3)
+#define prefetchw(address) __builtin_prefetch((const void *)(address), 1, 3)
+
 auto read_fasta(std::string filename) {
   auto fin = std::ifstream(filename);
   auto line = std::string{};
@@ -19,8 +22,9 @@ auto read_fasta(std::string filename) {
   while (std::getline(fin, line)) {
     if (line[0] == '>')
       continue;
-    for (auto &c : line)
+    for (auto &c : line) {
       seq.push_back(std::toupper(c));
+    }
   }
   return seq;
 }
@@ -36,7 +40,7 @@ void print(const vector<char_type> &S, const vector<size_type> &SA) {
 
   std::cout << std::setw(4) << "S:";
   for (auto &v : S)
-    std::cout << std::setw(4) << v;
+    std::cout << std::setw(4) << +v;
   std::cout << std::setw(4) << "$";
   std::cout << '\n';
 
@@ -63,21 +67,16 @@ void print(const vector<char_type> &S, const vector<size_type> &SA) {
     else
       wlcnt[c]++;
   }
-  wcnt[0]++;
-  wscnt[0]++;
 
   std::cout << std::setw(4) << "BC:";
-  for (auto c = 0; c < 128; c++) {
-    while (wcnt[c]--) {
-      if (c == 0)
-        std::cout << std::setw(4) << "0";
-      else
-        std::cout << std::setw(4) << char(c);
-    }
-  }
+  std::cout << std::setw(4) << "$";
+  for (auto c = 0; c < 128; c++)
+    while (wcnt[c]--)
+      std::cout << std::setw(4) << +c;
   std::cout << '\n';
 
   std::cout << std::setw(4) << "BT:";
+  std::cout << std::setw(4) << "S";
   for (auto c = 0; c < 128; c++) {
     while (wlcnt[c]--)
       std::cout << std::setw(4) << "L";
@@ -109,8 +108,8 @@ void check(const auto &S, const auto &SA, size_t sort_len) {
     }
     if (std::ranges::lexicographical_compare(rj, ri)) {
       std::cout << "wrong order\n";
-      std::cout << "SA[i + 0] = " << SA[i + 0] << " "; for (auto v : ri) std::cout << char(v); std::cout << '\n';
-      std::cout << "SA[i + 1] = " << SA[i + 1] << " "; for (auto v : rj) std::cout << char(v); std::cout << '\n';
+      std::cout << "SA[i + 0] = " << SA[i + 0] << " "; for (auto v : ri) std::cout << +v; std::cout << '\n';
+      std::cout << "SA[i + 1] = " << SA[i + 1] << " "; for (auto v : rj) std::cout << +v; std::cout << '\n';
       std::cout << std::flush;
       ok = false;
     }
@@ -118,7 +117,7 @@ void check(const auto &S, const auto &SA, size_t sort_len) {
 
   if (ok == false) {
     for (auto &v : S)
-      std::cout << char(v);
+      std::cout << +v;
     std::cout << '\n';
     std::cout << std::flush;
     exit(0);

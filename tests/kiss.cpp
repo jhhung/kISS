@@ -1,4 +1,4 @@
-#include <biovoltron/algo/sort/kpsais_sorter.hpp>
+#include <biovoltron/algo/sort/kiss1_sorter.hpp>
 #include <biovoltron/algo/sort/kiss_new_sorter.hpp>
 #include <biovoltron/utility/istring.hpp>
 #include <experimental/random>
@@ -22,7 +22,7 @@ TEST_CASE("kISS-1 Sorter") {
   const auto seq_sv = std::string_view{seq};
   const auto ref = Codec::to_istring(seq);
 
-  auto sa = KPsaisSorter<>::get_sa(ref, k);
+  auto sa = KISS1Sorter<>::get_sa(ref, k);
 #pragma omp parallel for
   for (int i = 1; i < sa.size(); i++)
     REQUIRE(seq_sv.substr(sa[i - 1], k) <= seq_sv.substr(sa[i], k));
@@ -42,7 +42,7 @@ TEST_CASE("kISS-1 large testcase") {
   const auto seq_sv = std::string_view{seq};
   const auto ref = Codec::to_istring(seq);
 
-  auto sa = KPsaisSorter<>::get_sa(ref, k);
+  auto sa = KISS1Sorter<>::get_sa(ref, k);
 #pragma omp parallel for
   for (int i = 1; i < sa.size(); i++)
     REQUIRE(seq_sv.substr(sa[i - 1], k) <= seq_sv.substr(sa[i], k));
