@@ -30,7 +30,7 @@ namespace kiss {
   std::min((uint32_t)NUM_THREADS, (uint32_t)n)
 #define LARGE_SEGMENT_THRESHOLD (1 << 14)
 
-enum SUFFIX_TYPE { L_TYPE = 0, S_TYPE = 1 };
+enum SUFFIX_TYPE_ { L_TYPE_ = 0, S_TYPE_ = 1 };
 enum BLOCK_ELEM_TYPE { NONHEAD = 0, HEAD = 1 };
 using TypeVector = biovoltron::detail::XbitVector<1, std::uint8_t,
                                                   std::allocator<std::uint8_t>>;
@@ -41,8 +41,8 @@ auto
 is_LMS(const auto& T, size_type i) {
   auto n = (size_type)T.size();
   return i == n
-         or (i > 0 and T[i - 1] == SUFFIX_TYPE::L_TYPE
-             and T[i] == SUFFIX_TYPE::S_TYPE);
+         or (i > 0 and T[i - 1] == SUFFIX_TYPE_::L_TYPE_
+             and T[i] == SUFFIX_TYPE_::S_TYPE_);
 }
 
 // Partition num_items of items into num_blocks blocks, the function
@@ -430,7 +430,7 @@ calculate_new_rank_head(const std::ranges::random_access_range auto& sa,
                         std::ranges::random_access_range auto& is_head,
                         size_type index_offset) {
   auto n_ = (size_type)sa.size();
-  auto is_new_head = TypeVector(n_, SUFFIX_TYPE::L_TYPE);
+  auto is_new_head = TypeVector(n_, SUFFIX_TYPE_::L_TYPE_);
   std::vector<size_type> head_tag(NUM_THREADS), head_sa_index(NUM_THREADS);
   std::vector<int> level(NUM_THREADS);
 #pragma omp parallel for num_threads(NUM_THREADS)
