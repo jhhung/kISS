@@ -2,8 +2,8 @@
 
 #include <spdlog/spdlog.h>
 
-#include <biovoltron/algo/sort/core/sorter.hpp>
-#include <biovoltron/algo/sort/psais_sorter.hpp>
+#include <biovoltron/algo/sort/sorter.hpp>
+#include <biovoltron/algo/sort/kiss1_sorter.hpp>
 #include <biovoltron/container/xbit_vector.hpp>
 #include <biovoltron/utility/archive/serializer.hpp>
 #include <biovoltron/utility/istring.hpp>
@@ -97,7 +97,7 @@ using namespace std::chrono;
  * ```
  */
 template<int SA_INTV = 1, typename size_type = std::uint32_t,
-         SASorter Sorter = PsaisSorter<size_type>>
+         SASorter Sorter = KISS1Sorter<size_type>>
 class FMIndex {
  public:
   /**
@@ -381,10 +381,9 @@ class FMIndex {
     SPDLOG_DEBUG("validate ref...");
     validate_ref(ref);
 
-    const auto sort_len
-      = std::same_as<Sorter, PsaisSorter<size_type>> ? istring::npos : 32u;
+    const auto sort_len = 32u;
     SPDLOG_DEBUG("only build sa with prefix length: {}", sort_len);
-    auto ori_sa = Sorter::get_sa(ref, sort_len);
+    auto ori_sa = Sorter::get_suffix_array_dna(ref, sort_len);
     build(ref, ori_sa);
   }
 

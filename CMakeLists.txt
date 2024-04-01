@@ -27,7 +27,7 @@ find_package(OpenMP 4.5 REQUIRED)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/submodules/spdlog)
 
 # Add definiton
-add_definitions(-mavx -mavx2 -mlzcnt)
+add_definitions(-mavx -mavx2 -mlzcnt -mbmi)
 
 # Link your source code to your project
 add_executable(kISS src/main.cpp)

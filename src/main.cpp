@@ -6,16 +6,23 @@
 #include "command/fmindex_query.hpp"
 
 #include "utils/options.hpp"
-#include <exception>
+#include <tbb/global_control.h>
 
 #include <iostream>
-#include <string>
+#include <execution>
 #include <map>
+#include <string>
 
 namespace bpo = boost::program_options;
 
 int main(int argc, char **argv) {
   auto [generic_vm, command_vm] = kISS::argparse(argc, argv);
+
+  auto num_threads = generic_vm["num_threads"].as<size_t>();
+  auto global_control = tbb::global_control(
+    tbb::global_control::max_allowed_parallelism,
+    num_threads
+  );
 
   auto command = generic_vm["command"].as<std::string>();
 

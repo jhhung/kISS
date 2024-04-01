@@ -9,6 +9,10 @@ void fmindex_query_main(
   const bpo::variables_map& generic_vm,
   const bpo::variables_map& command_vm
 ) {
+// TODO: remove me when generic sorting and indexing are supported
+  if (generic_vm.count("generic")) {
+    throw std::invalid_argument("Generic sorting and indexing are currently not supported.");
+  }
   auto fa_fn = command_vm["fasta"].as<std::string>();
   auto fa = std::ifstream{fa_fn};
 
@@ -19,7 +23,7 @@ void fmindex_query_main(
 
   std::ranges::transform(seq, seq.begin(), [](auto& c) { return c % 4; });
 
-  auto fmi = biovoltron::FMIndex<4, uint32_t, biovoltron::KPsaisSorter<uint32_t>>{
+  auto fmi = biovoltron::FMIndex<4, uint32_t, biovoltron::KISS1Sorter<uint32_t>>{
     .LOOKUP_LEN = 0
   };
 
