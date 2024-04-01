@@ -1,9 +1,5 @@
 #pragma once
 
-// TODO: spdlog
-// TODO: spdlog print message only when verbose mode is on
-// TODO: find out the required headers for the following code
-// TODO: add number of threads!!!
 #include <biovoltron/algo/sort/kiss_common.hpp>
 #include <biovoltron/algo/sort/structs.hpp>
 #include <biovoltron/algo/sort/utils.hpp>
@@ -11,10 +7,7 @@
 #include <spdlog/stopwatch.h>
 
 #include <omp.h>
-#include <execution>
-#include <span>
 #include <thread>
-#include <numeric>
 #include <ranges>
 
 namespace biovoltron {

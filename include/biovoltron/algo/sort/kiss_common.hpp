@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <execution>
 #include <span>
-#include <thread>
 
 namespace biovoltron {
 

@@ -1,6 +1,4 @@
 #pragma once
-// TODO: spdlog
-// TODO: unify include format
 #include <biovoltron/algo/sort/kiss1_core.hpp>
 #include <vector>
 

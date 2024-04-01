@@ -26,6 +26,12 @@ auto generic_options = []{ // {{{
     "version,v",
     "print version string"
   )(
+    "generic,g",
+    "(Under construction) "
+    "Select this option if the input FASTA file contains bases other than ATCG.\n"
+    "When turned on, some specific optimizations cannot be done and the performance"
+    "may be slightly worse."
+  )(
     "num_threads,t",
     bpo::value<size_t>()
       ->default_value(std::thread::hardware_concurrency())
@@ -129,7 +135,7 @@ auto fmindex_build_options = []{ // {{{
     bpo::value<size_t>()
       ->value_name("NUM")
       ->default_value(256),
-    "Sets the maximum query length for the fmindex search as k - sa_sample_rate; using -1 indicates an unlimited query length."
+    "(Under construction) Sets the maximum query length for the fmindex search as k - sa_sample_rate; using -1 indicates an unlimited query length."
   );
   return fmindex_build_options;
 }(); // }}}
@@ -162,7 +168,8 @@ auto fmindex_query_options = []{ // {{{
     bpo::value<std::string>()
       ->value_name("STR")
       ->required(),
-    "Content of the query string."
+    "Content of the query string.\n"
+    "(Under constrction) Currently, a maximum length of 32 is supported."
   );
   return fmindex_query_options;
 }(); // }}}

@@ -1,22 +1,11 @@
 #pragma once
 
-// TODO: findout the required headers for the following code
 #include <biovoltron/algo/sort/structs.hpp>
-#include <biovoltron/algo/sort/constant.hpp>
-
-#include <string>
-#include <fstream>
-#include <iostream>
-#include <chrono>
-#include <ranges>
-#include <iomanip>
-#include <algorithm>
 #include <omp.h>
 
 #define prefetchr(address) __builtin_prefetch((const void *)(address), 0, 3)
 #define prefetchw(address) __builtin_prefetch((const void *)(address), 1, 3)
 
-// TODO: add number of threads!!!
 namespace biovoltron {
 
 namespace kiss {

@@ -1,10 +1,5 @@
 #pragma once
 
-// TODO: spdlog
-// TODO: spdlog print message only when verbose mode is on
-// TODO: find out the required headers for the following code
-// TODO: add number of threads!!!
-// TODO: may produce incorrect result in rare use cases
 #include <biovoltron/algo/sort/constant.hpp>
 #include <biovoltron/algo/sort/kiss_common.hpp>
 #include <biovoltron/algo/sort/structs.hpp>
@@ -14,10 +9,8 @@
 
 #include <omp.h>
 #include <bit>
-#include <execution>
-#include <span>
+#include <limits>
 #include <thread>
-#include <numeric>
 #include <ranges>
 
 namespace biovoltron {
@@ -195,7 +188,6 @@ void initialize_sa(
   }
 }
 
-// TODO: check if the extra swap is really needed
 template<typename size_type>
 void initialize_rank(
   std::ranges::random_access_range auto &sa,
@@ -769,8 +761,9 @@ void prefix_doubling(
   SPDLOG_DEBUG("initialize_rank elapsed {}", sw);
 
   auto m_remaining = m_encoded - 1;
-  // TODO: index_offset may overflow
-  for (size_type index_offset = 1; index_offset < k; index_offset *= 2) {
+  for (size_type index_offset = 1; 
+       index_offset < k && index_offset <= std::numeric_limits<size_type>::max() / 2;
+       index_offset *= 2) {
     sw = spdlog::stopwatch{};
     sort_sa_blocks(sa, rank, is_head, index_offset, m_remaining, num_threads, states);
     SPDLOG_DEBUG("sort_sa_blocks elapsed {}", sw);

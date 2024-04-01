@@ -4,9 +4,9 @@
 #include <biovoltron/algo/sort/constant.hpp>
 #include <biovoltron/container/xbit_vector.hpp>
 
+#include <immintrin.h>
 #include <omp.h>
 #include <vector>
-#include <immintrin.h>
 
 template<typename T, std::size_t Alignment>
 class AlignedAllocator {
@@ -75,7 +75,7 @@ struct alignas(64) ThreadState {
 // https://github.com/Daniel-Liu-c0deb0t/simple-saca
 // TODO: check if aligned(64) can be faster
 template <typename char_type, typename size_type>
-struct PackedDNAString {
+struct alignas(64) PackedDNAString {
   size_type n_padded;
   biovoltron::DibitVector<> packed_dna;
 
