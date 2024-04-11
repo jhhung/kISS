@@ -170,6 +170,13 @@ auto fmindex_query_options = []{ // {{{
       ->required(),
     "Content of the query string.\n"
     "(Under constrction) Currently, a maximum length of 32 is supported."
+  )
+  (
+    "headn,n",
+    bpo::value<size_t>()
+      ->value_name("NUM")
+      ->default_value(10),
+    "Output the first n location"
   );
   return fmindex_query_options;
 }(); // }}}

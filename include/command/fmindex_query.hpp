@@ -1,5 +1,6 @@
 #pragma once
 
+#include <sstream>
 #include <exception>
 #include <boost/program_options.hpp>
 
@@ -36,7 +37,29 @@ void fmindex_query_main(
   auto [beg, end, offs] = fmi.get_range(query);
 
   auto positions = fmi.get_offsets(beg, end);
+  auto headn = command_vm["headn"].as<size_t>();
+
+  auto ending = [](int x) {
+    x %= 100;
+    if (x / 10 == 1)
+      return "th";
+    if (x % 10 == 1)
+      return "st";
+    if (x % 10 == 2)
+      return "nd";
+    if (x % 10 == 3)
+      return "rd";
+    return "th";
+  };
 
   SPDLOG_INFO("query = {} found {} times", biovoltron::Codec::to_string(query), positions.size());
+  for (auto i = size_t{}; i < std::min(headn, positions.size()); i++) {
+    auto loc = positions[i];
+    SPDLOG_INFO(
+      "The {}-{} position is {}, content of substring is {}",
+      i + 1, ending(i + 1), loc,
+      biovoltron::Codec::to_string(seq.substr(loc, query.size()))
+    );
+  }
 }
 
