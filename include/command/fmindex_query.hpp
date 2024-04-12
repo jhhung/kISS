@@ -32,34 +32,66 @@ void fmindex_query_main(
   assert(fmi_fin);
   fmi.load(fmi_fin);
 
-  auto query = biovoltron::Codec::to_istring(command_vm["query"].as<std::string>());
+  if (command_vm.count("query")) {
+    auto query = biovoltron::Codec::to_istring(command_vm["query"].as<std::string>());
 
-  auto [beg, end, offs] = fmi.get_range(query);
+    auto [beg, end, offs] = fmi.get_range(query);
 
-  auto positions = fmi.get_offsets(beg, end);
-  auto headn = command_vm["headn"].as<size_t>();
+    auto positions = fmi.get_offsets(beg, end);
+    auto headn = command_vm["headn"].as<size_t>();
 
-  auto ending = [](int x) {
-    x %= 100;
-    if (x / 10 == 1)
+    auto ending = [](int x) {
+      x %= 100;
+      if (x / 10 == 1)
+        return "th";
+      if (x % 10 == 1)
+        return "st";
+      if (x % 10 == 2)
+        return "nd";
+      if (x % 10 == 3)
+        return "rd";
       return "th";
-    if (x % 10 == 1)
-      return "st";
-    if (x % 10 == 2)
-      return "nd";
-    if (x % 10 == 3)
-      return "rd";
-    return "th";
-  };
+    };
 
-  SPDLOG_INFO("query = {} found {} times", biovoltron::Codec::to_string(query), positions.size());
-  for (auto i = size_t{}; i < std::min(headn, positions.size()); i++) {
-    auto loc = positions[i];
-    SPDLOG_INFO(
-      "The {}-{} position is {}, content of substring is {}",
-      i + 1, ending(i + 1), loc,
-      biovoltron::Codec::to_string(seq.substr(loc, query.size()))
-    );
+    SPDLOG_INFO("query = {} found {} times", biovoltron::Codec::to_string(query), positions.size());
+    for (auto i = size_t{}; i < std::min(headn, positions.size()); i++) {
+      auto loc = positions[i];
+      SPDLOG_INFO(
+        "The {}-{} position is {}, content of substring is {}",
+        i + 1, ending(i + 1), loc,
+        biovoltron::Codec::to_string(seq.substr(loc, query.size()))
+      );
+    }
+  }
+
+  if (command_vm.count("patterms")) {
+    auto pfile = std::ifstream{command_vm["patterms"].as<std::string>()};
+    uint32_t query_len;
+    uint32_t num_query;
+    pfile.read(reinterpret_cast<char*>(&query_len), sizeof(uint32_t));
+    pfile.read(reinterpret_cast<char*>(&num_query), sizeof(uint32_t));
+
+    SPDLOG_INFO("query_len: {}, num_query: {}", query_len, num_query);
+    auto query = std::string{};
+    auto time = double{};
+    auto occ = size_t{};
+    query.resize(query_len);
+    while (num_query--) {
+      pfile.read(query.data(), query_len);
+      auto iq = biovoltron::Codec::to_istring(query);
+      auto tic = std::chrono::high_resolution_clock::now();
+
+      auto [beg, end, offs] = fmi.get_range(iq);
+      auto positions = fmi.get_offsets_traditional(beg, end);
+      auto toc = std::chrono::high_resolution_clock::now();
+      occ += positions.size();
+      time += (toc - tic).count() / 1e9;
+
+      if (num_query % 1000 == 0)
+        SPDLOG_DEBUG("remain: {}, time: {}", num_query, time);
+    }
+    SPDLOG_INFO("searching time: {} seconds", time);
+    SPDLOG_INFO("number of matched locations: {}", occ);
   }
 }
 

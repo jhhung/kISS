@@ -17,7 +17,7 @@ namespace kiss {
 template <typename char_type, typename size_type>
 void lms_suffix_direct_sort_dna(
   const std::ranges::random_access_range auto &S,
-  const std::ranges::random_access_range auto &SA, 
+  const std::ranges::random_access_range auto &SA,
   const std::ranges::random_access_range auto &buffer,
   size_type m,
   size_type k,
@@ -122,7 +122,7 @@ void lms_suffix_direct_sort_dna(
 template <typename char_type, typename size_type>
 void lms_suffix_direct_sort(
   const std::ranges::random_access_range auto &S,
-  vector<size_type> &SA, 
+  vector<size_type> &SA,
   size_type m,
   size_type k
 ) {
@@ -180,7 +180,7 @@ void lms_suffix_direct_sort(
 
 template <typename char_type, typename size_type>
 void kiss1_suffix_array_dna(
-  vector<char_type> &S,
+  const vector<char_type> &S,
   vector<size_type> &SA,
   size_type k = 256u,
   const size_t num_threads = std::thread::hardware_concurrency()
@@ -221,7 +221,7 @@ void kiss1_suffix_array_dna(
 
 template <typename char_type, typename size_type>
 void kiss1_suffix_array(
-  vector<char_type> &S,
+  const vector<char_type> &S,
   vector<size_type> &SA,
   size_type k = 256u,
   const size_t num_threads = std::thread::hardware_concurrency()

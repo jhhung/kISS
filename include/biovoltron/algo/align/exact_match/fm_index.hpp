@@ -130,7 +130,7 @@ class FMIndex {
   /**
    * A sampled suffix array.
    */
-  std::vector<size_type> sa_;
+  Sorter::SA_t sa_;
 
   /**
    * A bit vector recording sampled suffix array.

@@ -834,7 +834,7 @@ auto get_encoded_S_length(
 
 template <typename char_type, typename size_type>
 void kiss2_suffix_array_internal(
-  vector<char_type> &S,
+  const vector<char_type> &S,
   vector<size_type> &SA,
   size_type k = 256u,
   const size_type character_size = CHAR_SIZE,
@@ -887,7 +887,7 @@ void kiss2_suffix_array_internal(
 
 template <typename char_type, typename size_type>
 void kiss2_suffix_array_dna(
-  vector<char_type> &S,
+  const vector<char_type> &S,
   vector<size_type> &SA,
   size_type k = 256u,
   const size_t num_threads = std::thread::hardware_concurrency()
@@ -897,7 +897,7 @@ void kiss2_suffix_array_dna(
 
 template <typename char_type, typename size_type>
 void kiss2_suffix_array(
-  vector<char_type> &S,
+  const vector<char_type> &S,
   vector<size_type> &SA,
   size_type k = 256u,
   const size_t num_threads = std::thread::hardware_concurrency()

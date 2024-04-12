@@ -48,10 +48,17 @@ void suffix_sort_main(
       break;
   }
 
-  auto sw = spdlog::stopwatch{};
-  auto sa = std::visit([&seq, &k,&num_threads] (auto &&sorter) {
-    return sorter.get_suffix_array_dna(seq, k, num_threads);
+  auto S = std::visit([&seq, &k,&num_threads] (auto &&sorter) {
+    return sorter.prepare_aligned_ref(seq);
   }, sorter);
-  SPDLOG_INFO("k = {}, suffix sorting elapsed {}", k, sw);
+
+  seq.clear();
+  seq.shrink_to_fit();
+
+  auto sw = spdlog::stopwatch{};
+  auto sa = std::visit([&S, &k,&num_threads] (auto &&sorter) {
+    return sorter.get_suffix_array_dna(S, k, num_threads);
+  }, sorter);
+  SPDLOG_INFO("n = {}, k = {}, suffix sorting elapsed {}", S.size(), k, sw);
 }
 
