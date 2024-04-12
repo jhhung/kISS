@@ -68,7 +68,7 @@ void lms_suffix_direct_sort_dna(
 
   auto comparator = [&S, k, n, &packed_S](size_type i, size_type j) {
     auto sorted_len = size_type{};
-    while (sorted_len + KISS1_SPLIT_SORT_STRIDE_DNA <= k && 
+    while (sorted_len <= k && 
            i + KISS1_SPLIT_SORT_STRIDE_DNA <= n &&
            j + KISS1_SPLIT_SORT_STRIDE_DNA <= n) {
       if (i + KISS1_SPLIT_SORT_STRIDE_DNA > n)
@@ -130,7 +130,7 @@ void lms_suffix_direct_sort(
 
   auto comparator = [&S, k, n](size_type i, size_type j) {
     auto sorted_len = size_type{};
-    while (sorted_len + KISS1_SPLIT_SORT_STRIDE <= k && 
+    while (sorted_len <= k && 
            i + KISS1_SPLIT_SORT_STRIDE <= n &&
            j + KISS1_SPLIT_SORT_STRIDE <= n) {
       if (i + KISS1_SPLIT_SORT_STRIDE > n)
