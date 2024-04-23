@@ -30,6 +30,12 @@ set(GCC_COVERAGE_COMPILE_FLAGS "-std=c++20 -Wall -Weffc++ -Wno-error=effc++ -ped
 # Include openmp
 find_package(OpenMP 4.5 REQUIRED)
 
+# Include tbb
+set(TBB_ROOT "${CMAKE_SOURCE_DIR}/submodules/tbb")
+include(${TBB_ROOT}/cmake/TBBBuild.cmake)
+tbb_build(TBB_ROOT ${TBB_ROOT} CONFIG_DIR TBB_DIR MAKE_ARGS tbb_cpf=1)
+find_package(TBB REQUIRED tbb_preview)
+
 # build
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/submodules/libsais/)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/submodules/parallel-divsufsort/)
@@ -38,13 +44,13 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/submodules/parallel-divsufsort/)
 add_executable(kiss-1 src/kiss-1.cpp)
 target_compile_options(kiss-1 PRIVATE -fopenmp -Ofast -g3 -std=c++20 -ltcmalloc)
 target_include_directories(kiss-1 PRIVATE "${CMAKE_SOURCE_DIR}/include")
-target_link_libraries(kiss-1 PRIVATE spdlog OpenMP::OpenMP_CXX)
+target_link_libraries(kiss-1 PRIVATE spdlog OpenMP::OpenMP_CXX ${TBB_IMPORTED_TARGETS})
 target_include_directories(kiss-1 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 add_executable(kiss-2 src/kiss-2.cpp)
 target_compile_options(kiss-2 PRIVATE -fopenmp -Ofast -g3 -std=c++20 -ltcmalloc)
 target_include_directories(kiss-2 PRIVATE "${CMAKE_SOURCE_DIR}/include")
-target_link_libraries(kiss-2 PRIVATE spdlog OpenMP::OpenMP_CXX)
+target_link_libraries(kiss-2 PRIVATE spdlog OpenMP::OpenMP_CXX ${TBB_IMPORTED_TARGETS})
 target_include_directories(kiss-2 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
 add_executable(saca-k src/saca-k.cpp src/saca-k-source.cpp)

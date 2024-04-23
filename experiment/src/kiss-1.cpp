@@ -3,6 +3,7 @@
 
 #include <biovoltron/algo/sort/kiss1_core.hpp>
 #include <biovoltron/algo/sort/utils.hpp>
+#include <tbb/global_control.h>
 #include "utils.hpp"
 #include "omp.h"
 #include <spdlog/spdlog.h>
@@ -67,5 +68,9 @@ int main(int argc, char *argv[]) {
   }
 
   size_t num_threads = atoi(argv[2]);
+  auto global_control = tbb::global_control(
+    tbb::global_control::max_allowed_parallelism,
+    num_threads
+  );
   run<uint32_t>(S, num_threads, atoi(argv[3]), atoi(argv[4]));
 }
