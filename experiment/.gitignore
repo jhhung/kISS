@@ -1,0 +1,6 @@
+experiment/
+paper/
+*.sh
+!experiment_a.sh
+!experiment_b.sh
+*.csv
