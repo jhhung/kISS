@@ -105,7 +105,7 @@ Please visit https://github.com/JHHLAB/FMtree for verification of FMtree combine
 ### k-ordered fmindex
 > [!note]
 > This is a version implemented by ourselves. Currently, we have discovered performance issues and are investigating.
-> For the faster FMIndex implementation, please visit https://github.com/JHHLAB/FMtree
+> To verify the correctness of k-ordered FM-indexes, you can visit the GitHub repository at https://github.com/JHHLAB/FMtree.
 
 Constructs a k-ordered FMindex for example/drosophia_chr1_2.fa with specific parameters:
 #### Build FMIndex
