@@ -68,7 +68,7 @@ void lms_suffix_direct_sort_dna(
 
   auto comparator = [&S, k, n, &packed_S](size_type i, size_type j) {
     auto sorted_len = size_type{};
-    while (sorted_len + KISS1_SPLIT_SORT_STRIDE_DNA <= k && 
+    while (sorted_len <= k && 
            i + KISS1_SPLIT_SORT_STRIDE_DNA <= n &&
            j + KISS1_SPLIT_SORT_STRIDE_DNA <= n) {
       if (i + KISS1_SPLIT_SORT_STRIDE_DNA > n)
@@ -128,9 +128,9 @@ void lms_suffix_direct_sort(
 ) {
   auto n = S.size();
 
-  auto comparator = [&S, k, n](size_type i, size_type j) {
+  auto comparator = [&S, k, n](size_type i, size_type j) { // {{{
     auto sorted_len = size_type{};
-    while (sorted_len + KISS1_SPLIT_SORT_STRIDE <= k && 
+    while (sorted_len <= k && 
            i + KISS1_SPLIT_SORT_STRIDE <= n &&
            j + KISS1_SPLIT_SORT_STRIDE <= n) {
       if (i + KISS1_SPLIT_SORT_STRIDE > n)
@@ -150,7 +150,7 @@ void lms_suffix_direct_sort(
         auto gt_mask = (uint32_t)_mm256_movemask_epi8(gt);
         return !((lsb_mask & gt_mask) > 0);
       }
-      
+
       sorted_len += KISS1_SPLIT_SORT_STRIDE;
       i += KISS1_SPLIT_SORT_STRIDE;
       j += KISS1_SPLIT_SORT_STRIDE;
@@ -169,12 +169,26 @@ void lms_suffix_direct_sort(
       return i < j;
     }
     return (i == n);
+  }; // }}}
+
+  auto small_cmp = [&S, k](auto i, auto j) {
+    auto ri = std::ranges::subrange(S.begin() + i, S.begin() + std::min<size_type>(S.size(), i + k));
+    auto rj = std::ranges::subrange(S.begin() + j, S.begin() + std::min<size_type>(S.size(), j + k));
+    return std::ranges::lexicographical_compare(ri, rj);
   };
 
-  std::sort(std::execution::par_unseq,
-            std::begin(SA), 
-            std::begin(SA) + m,
-            comparator);
+  const size_type thres = 100'000'000;
+  if (n < thres) {
+    std::sort(std::execution::par_unseq,
+              std::begin(SA),
+              std::begin(SA) + m,
+              small_cmp);
+  } else {
+    std::sort(std::execution::par_unseq,
+              std::begin(SA),
+              std::begin(SA) + m,
+              comparator);
+  }
 }
 
 

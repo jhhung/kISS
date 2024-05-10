@@ -3,6 +3,7 @@
 #include <biovoltron/algo/sort/utils.hpp>
 
 #include <algorithm>
+#include <cstring>
 #include <execution>
 #include <span>
 

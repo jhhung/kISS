@@ -19,8 +19,7 @@ Clone the kISS repository and navigate to the build directory, and generate buil
 git clone --recurse-submodules https://github.com/jhhung/kISS
 cd kISS
 cmake -B build
-
-cd build && cmake .. && make && cd -
+make -C build
 ```
 
 ## Usage Examples
@@ -32,7 +31,7 @@ $ ./build/kISS -h
 | | __|_ _|/ ___|/ ___|
 | |/ / | | \___ \\___ \
 |   <  | |  ___) |___) |
-|_|\_\|___||____/|____/ 0.0.1-alpha
+|_|\_\|___||____/|____/ 1.0.0
 
 kISS [--generic-option ...] cmd [--cmd-specific-option ...]:
 
@@ -135,6 +134,9 @@ $ ./build/kISS fmindex_query example/drosophia_chr1_2.fa -q TGCTTAGCTAG -n 8
 [2024-04-12 15:29:36.001] [stderr] [info] [fmindex_query.hpp:59] The 7-th position is 46565569, content of substring is TGCTTAGCTAG
 [2024-04-12 15:29:36.001] [stderr] [info] [fmindex_query.hpp:59] The 8-th position is 44749501, content of substring is TGCTTAGCTAG
 ```
+
+## Benchmark
+See [Benchmark Section](experiment/README.md#benchmark)
 
 ## Citation
 Zheng-Dao Yang, Hsuan-Yu Kuo, Po-Wei Hsieh and Jui-Hung Hung, Efficient Construction and Utilization of k-ordered FM-indexes with kISS for Ultra Fast Read Mapping in Large Genomes.

@@ -42,3 +42,5 @@ target_include_directories(kISS PRIVATE ${PROJECT_SOURCE_DIR}/include)
 
 include(CTest)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/tests)
+
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/experiment)
