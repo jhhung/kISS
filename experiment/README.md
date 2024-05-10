@@ -21,24 +21,24 @@ These scripts generate two CSV files: `experiment_32_threads.csv` (Results under
 
 ### Comparison of Different k-values with Same Number of Threads
 Using the CHM13v2.0 dataset, we evaluated the performance of various suffix sorting algorithms with a fixed number of 32 threads. We compared the single-threaded SCAC-K, the multi-threaded parDSS (libsais), and kISS across different k-values. Notably, kISS outperformed others consistently across various k-values. Specifically, kISS-1 demonstrated superior performance for smaller k-values, while kISS-2 exhibited stable performance even for larger k-values, including the complete suffix array.
-<div style="text-align:center;">
+<p align="center">
   <img src="image/chm13v2.0_32_threads.png" alt="CHM13v2.0 Dataset" style="width:500px;"/>
-</div>
+</p>
 
 ### Time-Memory Tradeoff
 Analyzing the relationship between time and memory usage with the CHM13v2.0 dataset and 32 threads, kISS achieved a balanced tradeoff between time and memory. It approached the memory consumption of SACA-K while requiring less time compared to other algorithms.
-<div style="text-align:center;">
+<p align="center">
   <img src="image/memory-time-chm13v2.0.png" alt="CHM13v2.0 Dataset" style="width:500px;"/>
-</div>
+</p>
 
 ### Time Distribution across Stages for Different k-values
 In the evaluation with the CHM13v2.0 dataset and 32 threads, kISS showcased notable time distribution across its stages. The majority of time consumption was observed in the LMS suffixes k-ordered sorting stage.
-<div style="text-align:center;">
+<p align="center">
   <img src="image/fixed_t_chm13v2.0.png" alt="CHM13v2.0 Dataset" style="width:500px;"/>
-</div>
+</p>
 
 ### Time Distribution across Stages with Different Thread Counts
 Keeping k-value fixed at 256, and using the CHM13v2.0 dataset, kISS exhibited significant parallelization efficiency, particularly in the parallelization of LMS suffixes k-ordered sorting. Following that, induced sorting was the next significant time-consuming stage.
-<div style="text-align:center;">
+<p align="center">
   <img src="image/fixed_k_chm13v2.0.png" alt="CHM13v2.0 Dataset" style="width:500px;"/>
-</div>
+</p>
