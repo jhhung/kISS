@@ -5,7 +5,7 @@
 
 namespace kISS {
 
-const auto VERSION = std::string{"0.0.1-alpha"};
+const auto VERSION = std::string{"1.0.0"};
 
 const auto BANNER = std::string{R"( _     ___  ____  ____
 | | __|_ _|/ ___|/ ___|

@@ -19,8 +19,7 @@ Clone the kISS repository and navigate to the build directory, and generate buil
 git clone --recurse-submodules https://github.com/jhhung/kISS
 cd kISS
 cmake -B build
-
-cd build && cmake .. && make && cd -
+make -C build
 ```
 
 ## Usage Examples
@@ -32,7 +31,7 @@ $ ./build/kISS -h
 | | __|_ _|/ ___|/ ___|
 | |/ / | | \___ \\___ \
 |   <  | |  ___) |___) |
-|_|\_\|___||____/|____/ 0.0.1-alpha
+|_|\_\|___||____/|____/ 1.0.0
 
 kISS [--generic-option ...] cmd [--cmd-specific-option ...]:
 
