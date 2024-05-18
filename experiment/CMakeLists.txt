@@ -37,6 +37,7 @@ tbb_build(TBB_ROOT ${TBB_ROOT} CONFIG_DIR TBB_DIR MAKE_ARGS tbb_cpf=1)
 find_package(TBB REQUIRED tbb_preview)
 
 # build
+add_definitions(-DLIBSAIS_OPENMP)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/submodules/libsais/)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/submodules/parallel-divsufsort/)
 
@@ -72,6 +73,7 @@ target_include_directories(pardss-32 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/submod
 
 add_executable(libsais-test-64 src/libsais.cpp)
 target_compile_options(libsais-test-64 PRIVATE -fopenmp -Ofast -g3 -std=c++20 -ltcmalloc)
+target_compile_definitions(libsais-test-64 PRIVATE LIBSAIS_OPENMP)
 target_include_directories(libsais-test-64 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(libsais-test-64 PRIVATE libsais spdlog OpenMP::OpenMP_CXX)
 target_include_directories(libsais-test-64 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/submodules/libsais/include")
@@ -79,7 +81,9 @@ target_include_directories(libsais-test-64 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/
 
 add_executable(libsais-test-32 src/libsais_32bit.cpp)
 target_compile_options(libsais-test-32 PRIVATE -fopenmp -Ofast -g3 -std=c++20 -ltcmalloc)
+target_compile_definitions(libsais-test-32 PRIVATE LIBSAIS_OPENMP)
 target_include_directories(libsais-test-32 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(libsais-test-32 PRIVATE libsais spdlog OpenMP::OpenMP_CXX)
 target_include_directories(libsais-test-32 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/submodules/libsais/include")
 target_include_directories(libsais-test-32 PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../libsais_test/Biovoltron/include")
+

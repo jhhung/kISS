@@ -6,7 +6,7 @@
 	url = https://github.com/oneapi-src/oneTBB
 [submodule "experiment/submodules/parallel-divsufsort"]
 	path = experiment/submodules/parallel-divsufsort
-	url = git@github.com:jlabeit/parallel-divsufsort.git
+	url = https://github.com/JHHLAB/parallel-divsufsort.git
 [submodule "experiment/submodules/libsais"]
 	path = experiment/submodules/libsais
 	url = git@github.com:IlyaGrebnov/libsais.git

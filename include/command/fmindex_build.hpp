@@ -5,6 +5,8 @@
 #include <biovoltron/algo/align/exact_match/fm_index.hpp>
 #include <biovoltron/algo/sort/kiss1_sorter.hpp>
 
+#include "utils/io.hpp"
+
 namespace bpo = boost::program_options;
 
 void fmindex_build_main(
@@ -18,10 +20,7 @@ void fmindex_build_main(
   auto fa_fn = command_vm["fasta"].as<std::string>();
   auto fa = std::ifstream{fa_fn};
 
-  auto seq = biovoltron::istring{};
-  auto refs = std::ranges::istream_view<biovoltron::FastaRecord<true>>(fa);
-  for (auto &ref : refs)
-    seq += ref.seq;
+  auto seq = read_sequence(fa);
 
   std::ranges::transform(seq, seq.begin(), [](auto& c) { return c % 4; });
 

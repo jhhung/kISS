@@ -4,6 +4,8 @@
 #include <exception>
 #include <boost/program_options.hpp>
 
+#include "utils/io.hpp"
+
 namespace bpo = boost::program_options;
 
 void fmindex_query_main(
@@ -17,10 +19,7 @@ void fmindex_query_main(
   auto fa_fn = command_vm["fasta"].as<std::string>();
   auto fa = std::ifstream{fa_fn};
 
-  auto seq = biovoltron::istring{};
-  auto refs = std::ranges::istream_view<biovoltron::FastaRecord<true>>(fa);
-  for (auto &ref : refs)
-    seq += ref.seq;
+  auto seq = read_sequence(fa);
 
   std::ranges::transform(seq, seq.begin(), [](auto& c) { return c % 4; });
 
@@ -64,8 +63,8 @@ void fmindex_query_main(
     }
   }
 
-  if (command_vm.count("patterms")) {
-    auto pfile = std::ifstream{command_vm["patterms"].as<std::string>()};
+  if (command_vm.count("batch")) {
+    auto pfile = std::ifstream{command_vm["batch"].as<std::string>()};
     uint32_t query_len;
     uint32_t num_query;
     pfile.read(reinterpret_cast<char*>(&query_len), sizeof(uint32_t));
@@ -75,6 +74,7 @@ void fmindex_query_main(
     auto query = std::string{};
     auto time = double{};
     auto occ = size_t{};
+    auto location_checksum = size_t{};
     query.resize(query_len);
     while (num_query--) {
       pfile.read(query.data(), query_len);
@@ -82,16 +82,20 @@ void fmindex_query_main(
       auto tic = std::chrono::high_resolution_clock::now();
 
       auto [beg, end, offs] = fmi.get_range(iq);
-      auto positions = fmi.get_offsets_traditional(beg, end);
+      auto positions = fmi.get_offsets(beg, end);
       auto toc = std::chrono::high_resolution_clock::now();
       occ += positions.size();
       time += (toc - tic).count() / 1e9;
 
-      if (num_query % 1000 == 0)
+      if (num_query % 100000 == 0)
         SPDLOG_DEBUG("remain: {}, time: {}", num_query, time);
+
+      for (const auto &v : positions)
+        location_checksum += v;
     }
     SPDLOG_INFO("searching time: {} seconds", time);
     SPDLOG_INFO("number of matched locations: {}", occ);
+    SPDLOG_INFO("location checksum: {}", location_checksum);
   }
 }
 

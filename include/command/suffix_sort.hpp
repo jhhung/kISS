@@ -14,6 +14,8 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/stopwatch.h>
 
+#include "utils/io.hpp"
+
 namespace bpo = boost::program_options;
 
 void suffix_sort_main(
@@ -26,10 +28,7 @@ void suffix_sort_main(
   }
   auto fa = std::ifstream{command_vm["fasta"].as<std::string>()};
 
-  auto seq = biovoltron::istring{};
-  auto refs = std::ranges::istream_view<biovoltron::FastaRecord<true>>(fa);
-  for (auto &ref : refs)
-    seq += ref.seq;
+  auto seq = read_sequence(fa);
 
   std::ranges::transform(seq, seq.begin(), [](auto& c) { return c % 4; });
 
