@@ -9,4 +9,4 @@
 	url = https://github.com/JHHLAB/parallel-divsufsort.git
 [submodule "experiment/submodules/libsais"]
 	path = experiment/submodules/libsais
-	url = git@github.com:IlyaGrebnov/libsais.git
+	url = https://github.com/IlyaGrebnov/libsais.git
