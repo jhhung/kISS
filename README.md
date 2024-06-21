@@ -143,7 +143,7 @@ See [Benchmark Section](experiment/README.md#benchmark)
 ## Reference
 This project utilizes efficient implementations from the following sources:
 - [simple-saca](https://github.com/Daniel-Liu-c0deb0t/simple-saca) by Daniel Liu for k-ordered directly suffix sorting.
-- [libsais](https://github.com/ilyagrebnov/libsais), which provides efficient implementations for induced sorting and other essential steps in SAIS suffix array construction, including:
+- [libsais](https://github.com/ilyagrebnov/libsais) by Ilya Grebnov, which provides efficient implementations for induced sorting and other essential steps in SAIS suffix array construction, including:
   - Cache prefetch techniques
   - Branchless implementation
   - OpenMP parallelism strategy
