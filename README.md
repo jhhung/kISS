@@ -141,7 +141,11 @@ $ ./build/kISS fmindex_query example/drosophia_chr1_2.fa -q TGCTTAGCTAG -n 8
 See [Benchmark Section](experiment/README.md#benchmark)
 
 ## Citation
-Zheng-Dao Yang, Hsuan-Yu Kuo, Po-Wei Hsieh and Jui-Hung Hung, Efficient Construction and Utilization of k-ordered FM-indexes with kISS for Ultra Fast Read Mapping in Large Genomes.
+Zheng-Dao Yang, Hsuan-Yu Kuo, Po-Wei Hsieh and Jui-Hung Hung, Efficient Construction and Utilization of k-Ordered FM-indexes with kISS for Ultra-Fast Read Mapping in Large Genomes. https://doi.org/10.1093/bioinformatics/btae409
+
+This project utilizes efficient implementations for constructing k-ordered FM-indexes, as referenced from the following implementations:
+- k-ordered Directly Suffix Sort: Implemented using [simple-saca](https://github.com/Daniel-Liu-c0deb0t/simple-saca) by Daniel Liu. This method optimizes the k-ordered direct sorting of suffixes.
+- Induced Sort and Other SAIS Steps: [libsais](https://github.com/ilyagrebnov/libsais) provides efficient implementations for induced sorting and other essential steps in SAIS suffix array construction.
 
 ## Contact
 For any inquiries or additional information, contact Jui-Hung Hung via email jhh@cs.nycu.edu.tw
