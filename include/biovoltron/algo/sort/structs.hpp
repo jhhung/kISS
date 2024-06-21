@@ -72,7 +72,11 @@ struct alignas(64) ThreadState {
   ThreadState() : bucket(5 * CHAR_SIZE), cache(THREAD_CACHE_SIZE), buffer(THREADSTATE_MAX_BUFFER_SIZE) {}
 };
 
-// https://github.com/Daniel-Liu-c0deb0t/simple-saca
+/*
+This implementation refers to Daniel Liu's "RevPacked" struct
+of the simple-saca project:
+https://github.com/Daniel-Liu-c0deb0t/simple-saca/
+*/
 // TODO: check if aligned(64) can be faster
 template <typename char_type, typename size_type>
 struct alignas(64) PackedDNAString {
@@ -109,6 +113,10 @@ struct alignas(64) PackedDNAString {
     }
   }
 
+  /*
+  This function refers to the "load_125" function
+  from the reference implementation.
+  */
   auto load_prefix_length_125 (size_type idx) {
     idx = n_padded - idx - 128;
     auto i = (idx + 3) / 4;
@@ -158,6 +166,10 @@ struct alignas(64) PackedDNAString {
    return _mm256_and_si256(_mm256_or_si256(hi, lo), mask);
   }
 
+  /*
+  This function refers to the "load_k" function
+  from the reference implementation.
+  */
   auto load_prefix_length_less_than_16(
     size_type idx,
     size_type prefix_size

@@ -14,6 +14,12 @@ namespace biovoltron {
 
 namespace kiss {
 
+/*
+This implementation refers to Daniel Liu's "sort_packed" function
+of the simple-saca project:
+https://github.com/Daniel-Liu-c0deb0t/simple-saca/
+The corresponding steps are listed below.
+*/
 template <typename char_type, typename size_type>
 void lms_suffix_direct_sort_dna(
   const std::ranges::random_access_range auto &S,
@@ -24,8 +30,14 @@ void lms_suffix_direct_sort_dna(
   const size_t num_threads,
   vector<ThreadState<size_type>> &states
 ) {
+  /*
+  The step refers to the "2 bit packing" phase.
+  */
   auto packed_S = PackedDNAString<char_type, size_type>(S, states, num_threads);
 
+  /*
+  The steps refer to the "Parallel bucket count" phase.
+  */
 #pragma omp parallel num_threads(num_threads)
   {
     auto tid = omp_get_thread_num();
@@ -38,6 +50,9 @@ void lms_suffix_direct_sort_dna(
     }
   }
 
+  /*
+  The steps refer to the "Bucket prefix sum" phase.
+  */
   std::array<size_type, KISS1_SPLIT_SORT_BUCKET_SIZE + 1> segment_start{};
 
 #pragma omp parallel for num_threads(num_threads)
@@ -51,6 +66,9 @@ void lms_suffix_direct_sort_dna(
   std::exclusive_scan(std::begin(segment_start), std::end(segment_start),
       std::begin(segment_start), size_type{});
 
+  /*
+  The steps refer to the "Parallel move into buckets" phase.
+  */
 #pragma omp parallel num_threads(num_threads)
   {
     auto tid = omp_get_thread_num();
@@ -64,8 +82,15 @@ void lms_suffix_direct_sort_dna(
     }
   }
 
+  /*
+  The steps refer to the "Parallel sort buckets" phase.
+  */
   auto n = S.size();
 
+  /*
+  This lambda function refers to the "simd_cmp_packed" function
+  from the reference implementation.
+  */
   auto comparator = [&S, k, n, &packed_S](size_type i, size_type j) {
     auto sorted_len = size_type{};
     while (sorted_len <= k && 
@@ -119,6 +144,11 @@ void lms_suffix_direct_sort_dna(
   std::memmove(&SA[0], &buffer[0], sizeof(size_type) * m);
 }
 
+/*
+The lambda function of this implementation refers to Daniel Liu's
+"simd_cmp" function of the simple-saca project:
+https://github.com/Daniel-Liu-c0deb0t/simple-saca/
+*/
 template <typename char_type, typename size_type>
 void lms_suffix_direct_sort(
   const std::ranges::random_access_range auto &S,
@@ -128,6 +158,10 @@ void lms_suffix_direct_sort(
 ) {
   auto n = S.size();
 
+  /*
+  This lambda function refers to the "simd_cmp" function
+  from the reference implementation.
+  */
   auto comparator = [&S, k, n](size_type i, size_type j) { // {{{
     auto sorted_len = size_type{};
     while (sorted_len <= k && 
