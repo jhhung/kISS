@@ -30,7 +30,9 @@ class AlignedAllocator {
   AlignedAllocator(const AlignedAllocator<U, Alignment>&) noexcept {}
 
   pointer allocate(size_type n) {
-    if (auto p = aligned_alloc(Alignment, n * sizeof(T)))
+    // The required size needs to be a multiple of Alignment; otherwise, round up.
+    auto required_size = (n * sizeof(T) + (Alignment - 1)) & ~(Alignment - 1);
+    if (auto p = aligned_alloc(Alignment, required_size))
       return static_cast<pointer>(p);
     throw std::bad_alloc();
   }
