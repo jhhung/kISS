@@ -484,6 +484,7 @@ class FMIndex {
           continue;
 
         if (cur_beg + 1 == cur_end) {
+          if (b_[cur_beg]) continue;
           const auto nxt_beg = lf(bwt_[cur_beg], cur_beg);
           const auto nxt_end = nxt_beg + 1;
           q.emplace(nxt_beg, nxt_end, nxt_dep);
@@ -534,6 +535,7 @@ class FMIndex {
         continue;
 
       if (cur_beg + 1 == cur_end) {
+        if (b_[cur_beg]) continue;
         const auto nxt_beg = lf(bwt_[cur_beg], cur_beg);
         const auto nxt_end = nxt_beg + 1;
         q.emplace(nxt_beg, nxt_end, nxt_dep);

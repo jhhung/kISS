@@ -261,14 +261,16 @@ auto induced_L_block_update(
     SA[bucket[cache[i].symbol]++] = cache[i].index;
   };
 
-  size_type i, j;
-  for (i = 0, j = state.m - 3; i < j; i += 4) {
-    prefetchr(&cache[i + prefetch_distance]);
+  size_type i = 0, j = 0;
+  if (state.m >= 3) {
+    for (j = state.m - 3; i < j; i += 4) {
+      prefetchr(&cache[i + prefetch_distance]);
 
-    update(i + 0);
-    update(i + 1);
-    update(i + 2);
-    update(i + 3);
+      update(i + 0);
+      update(i + 1);
+      update(i + 2);
+      update(i + 3);
+    }
   }
 
   for (j += 3; i < j; i++)
@@ -307,6 +309,15 @@ auto induced_L_block_prepare(
       bucket[cache[count++].symbol]++;
     }
   };
+
+  // state.len - prefetch_distance - 1 would underflow when state.len is
+  // too small to safely prefetch prefetch_distance elements ahead. Fall
+  // back to a simple loop.
+  if (state.len <= (size_type)prefetch_distance) {
+    for (i = state.beg; i < state.beg + state.len; i++)
+      prepare(i);
+    return count;
+  }
 
   for (i = state.beg, j = state.beg + state.len - prefetch_distance - 1; i < j; i += 2) {
     prefetchw(&SA[i + 2 * prefetch_distance]);
@@ -518,8 +529,8 @@ auto get_lms(
     auto curr_type = type & SUFFIX_TYPE_MASK;
     state.bucket[curr_type * CHAR_SIZE + c0]++;
 
-    SA[ptr] = i;
-    ptr += curr_type == LMS_TYPE;
+    if (curr_type == LMS_TYPE)
+      SA[ptr++] = i;
 
     std::swap(c0, c1);
   };
